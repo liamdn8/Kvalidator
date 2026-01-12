@@ -1,0 +1,104 @@
+# Example Design Specification for NFV Infrastructure
+
+version: "1.0"
+designName: "NFV Production Environment"
+description: "Reference architecture for NFV production deployment"
+
+# Cluster Configuration
+cluster:
+  name: "nfv-prod-cluster"
+  version: "1.28"
+  nodeCount: 
+    min: 3
+    max: 10
+  
+# Compute Resources
+compute:
+  nodes:
+    - type: "worker"
+      count: 6
+      cpu: "32"
+      memory: "128Gi"
+      labels:
+        workload-type: "nfv"
+        zone: "az1"
+    
+    - type: "storage"
+      count: 3
+      cpu: "16"
+      memory: "64Gi"
+      labels:
+        workload-type: "storage"
+
+# Network Configuration
+network:
+  cni: "calico"
+  podCIDR: "10.244.0.0/16"
+  serviceCIDR: "10.96.0.0/12"
+  networkPolicies:
+    enabled: true
+    defaultDeny: true
+
+# Workloads
+workloads:
+  - name: "vnf-core"
+    namespace: "nfv-core"
+    replicas: 3
+    image: "vnf-core:v2.0"
+    resources:
+      requests:
+        cpu: "2000m"
+        memory: "4Gi"
+      limits:
+        cpu: "4000m"
+        memory: "8Gi"
+    affinity:
+      type: "anti-affinity"
+      required: true
+    
+  - name: "vnf-signaling"
+    namespace: "nfv-signaling"
+    replicas: 2
+    image: "vnf-signaling:v1.5"
+    resources:
+      requests:
+        cpu: "1000m"
+        memory: "2Gi"
+      limits:
+        cpu: "2000m"
+        memory: "4Gi"
+
+# Storage Configuration
+storage:
+  classes:
+    - name: "fast-ssd"
+      provisioner: "kubernetes.io/ceph"
+      parameters:
+        type: "ssd"
+        replication: 3
+    
+    - name: "standard"
+      provisioner: "kubernetes.io/ceph"
+      parameters:
+        type: "hdd"
+        replication: 2
+
+# High Availability Requirements
+highAvailability:
+  podDisruptionBudgets:
+    enabled: true
+    minAvailable: 1
+  
+  replicaRequirements:
+    production: 3
+    staging: 2
+
+# Compliance Requirements
+compliance:
+  standards:
+    - "ETSI NFV"
+    - "3GPP"
+  securityPolicies:
+    - "PodSecurityPolicy enabled"
+    - "Network segmentation required"
+    - "TLS encryption mandatory"

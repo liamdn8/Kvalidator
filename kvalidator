@@ -1,0 +1,13 @@
+#!/bin/bash
+# KValidator launcher script
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+JAR_FILE="$SCRIPT_DIR/target/kvalidator-1.0.0-SNAPSHOT-jar-with-dependencies.jar"
+
+if [ ! -f "$JAR_FILE" ]; then
+    echo "Error: JAR file not found at $JAR_FILE"
+    echo "Please run: mvn clean package"
+    exit 1
+fi
+
+java -jar "$JAR_FILE" "$@"

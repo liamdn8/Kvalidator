@@ -1,0 +1,16 @@
+/home/liamdn/Kvalidator/src/main/java/com/nfv/validator/model/comparison/ComparisonStatus.java
+/home/liamdn/Kvalidator/src/main/java/com/nfv/validator/model/FlatObjectModel.java
+/home/liamdn/Kvalidator/src/main/java/com/nfv/validator/report/ExcelReportGenerator.java
+/home/liamdn/Kvalidator/src/main/java/com/nfv/validator/kubernetes/K8sDataCollector.java
+/home/liamdn/Kvalidator/src/main/java/com/nfv/validator/comparison/NamespaceComparator.java
+/home/liamdn/Kvalidator/src/main/java/com/nfv/validator/KValidatorApplication.java
+/home/liamdn/Kvalidator/src/main/java/com/nfv/validator/model/comparison/ObjectComparison.java
+/home/liamdn/Kvalidator/src/main/java/com/nfv/validator/config/ConfigLoader.java
+/home/liamdn/Kvalidator/src/main/java/com/nfv/validator/cli/CommandLineInterface.java
+/home/liamdn/Kvalidator/src/main/java/com/nfv/validator/yaml/YamlDataCollector.java
+/home/liamdn/Kvalidator/src/main/java/com/nfv/validator/config/ValidationConfig.java
+/home/liamdn/Kvalidator/src/main/java/com/nfv/validator/model/comparison/KeyComparison.java
+/home/liamdn/Kvalidator/src/main/java/com/nfv/validator/config/IgnoreRule.java
+/home/liamdn/Kvalidator/src/main/java/com/nfv/validator/model/FlatNamespaceModel.java
+/home/liamdn/Kvalidator/src/main/java/com/nfv/validator/kubernetes/KubernetesClusterManager.java
+/home/liamdn/Kvalidator/src/main/java/com/nfv/validator/model/comparison/NamespaceComparison.java
