@@ -1,0 +1,22 @@
+# Simple Batch Validation Request Example
+# Minimal configuration for quick testing
+
+version: "1.0"
+description: "Simple batch validation example"
+
+requests:
+  # Compare dev environments
+  - name: "dev-comparison"
+    type: "namespace-comparison"
+    namespaces:
+      - "cluster1/app-dev"
+      - "cluster2/app-dev"
+    output: "dev-comparison.xlsx"
+  
+  # Compare staging environments
+  - name: "staging-comparison"
+    type: "namespace-comparison"
+    namespaces:
+      - "cluster1/app-staging"
+      - "cluster2/app-staging"
+    output: "staging-comparison.xlsx"

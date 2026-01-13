@@ -42,58 +42,88 @@ public class K8sDataCollector {
         model.setObjects(new HashMap<>());
 
         // Collect Deployments
-        List<Deployment> deployments = client.apps().deployments()
-                .inNamespace(namespace).list().getItems();
-        for (Deployment deployment : deployments) {
-            FlatObjectModel flatObj = convertToFlatObjectModel(deployment);
-            model.addObject(deployment.getMetadata().getName(), flatObj);
+        log.info("Collecting Deployments...");
+        try {
+            List<Deployment> deployments = client.apps().deployments()
+                    .inNamespace(namespace).list().getItems();
+            for (Deployment deployment : deployments) {
+                FlatObjectModel flatObj = convertToFlatObjectModel(deployment);
+                model.addObject(deployment.getMetadata().getName(), flatObj);
+            }
+            log.info("Collected {} Deployments", deployments.size());
+        } catch (Exception e) {
+            log.error("Failed to collect Deployments", e);
         }
-        log.debug("Collected {} Deployments", deployments.size());
 
         // Collect StatefulSets
-        List<StatefulSet> statefulSets = client.apps().statefulSets()
-                .inNamespace(namespace).list().getItems();
-        for (StatefulSet statefulSet : statefulSets) {
-            FlatObjectModel flatObj = convertToFlatObjectModel(statefulSet);
-            model.addObject(statefulSet.getMetadata().getName(), flatObj);
+        log.info("Collecting StatefulSets...");
+        try {
+            List<StatefulSet> statefulSets = client.apps().statefulSets()
+                    .inNamespace(namespace).list().getItems();
+            for (StatefulSet statefulSet : statefulSets) {
+                FlatObjectModel flatObj = convertToFlatObjectModel(statefulSet);
+                model.addObject(statefulSet.getMetadata().getName(), flatObj);
+            }
+            log.info("Collected {} StatefulSets", statefulSets.size());
+        } catch (Exception e) {
+            log.error("Failed to collect StatefulSets", e);
         }
-        log.debug("Collected {} StatefulSets", statefulSets.size());
 
         // Collect DaemonSets
-        List<DaemonSet> daemonSets = client.apps().daemonSets()
-                .inNamespace(namespace).list().getItems();
-        for (DaemonSet daemonSet : daemonSets) {
-            FlatObjectModel flatObj = convertToFlatObjectModel(daemonSet);
-            model.addObject(daemonSet.getMetadata().getName(), flatObj);
+        log.info("Collecting DaemonSets...");
+        try {
+            List<DaemonSet> daemonSets = client.apps().daemonSets()
+                    .inNamespace(namespace).list().getItems();
+            for (DaemonSet daemonSet : daemonSets) {
+                FlatObjectModel flatObj = convertToFlatObjectModel(daemonSet);
+                model.addObject(daemonSet.getMetadata().getName(), flatObj);
+            }
+            log.info("Collected {} DaemonSets", daemonSets.size());
+        } catch (Exception e) {
+            log.error("Failed to collect DaemonSets", e);
         }
-        log.debug("Collected {} DaemonSets", daemonSets.size());
 
         // Collect Services
-        List<Service> services = client.services()
-                .inNamespace(namespace).list().getItems();
-        for (Service service : services) {
-            FlatObjectModel flatObj = convertToFlatObjectModel(service);
-            model.addObject(service.getMetadata().getName(), flatObj);
+        log.info("Collecting Services...");
+        try {
+            List<Service> services = client.services()
+                    .inNamespace(namespace).list().getItems();
+            for (Service service : services) {
+                FlatObjectModel flatObj = convertToFlatObjectModel(service);
+                model.addObject(service.getMetadata().getName(), flatObj);
+            }
+            log.info("Collected {} Services", services.size());
+        } catch (Exception e) {
+            log.error("Failed to collect Services", e);
         }
-        log.debug("Collected {} Services", services.size());
 
         // Collect ConfigMaps
-        List<ConfigMap> configMaps = client.configMaps()
-                .inNamespace(namespace).list().getItems();
-        for (ConfigMap configMap : configMaps) {
-            FlatObjectModel flatObj = convertToFlatObjectModel(configMap);
-            model.addObject(configMap.getMetadata().getName(), flatObj);
+        log.info("Collecting ConfigMaps...");
+        try {
+            List<ConfigMap> configMaps = client.configMaps()
+                    .inNamespace(namespace).list().getItems();
+            for (ConfigMap configMap : configMaps) {
+                FlatObjectModel flatObj = convertToFlatObjectModel(configMap);
+                model.addObject(configMap.getMetadata().getName(), flatObj);
+            }
+            log.info("Collected {} ConfigMaps", configMaps.size());
+        } catch (Exception e) {
+            log.error("Failed to collect ConfigMaps", e);
         }
-        log.debug("Collected {} ConfigMaps", configMaps.size());
 
         // Collect Secrets
-        List<Secret> secrets = client.secrets()
-                .inNamespace(namespace).list().getItems();
-        for (Secret secret : secrets) {
-            FlatObjectModel flatObj = convertToFlatObjectModel(secret);
-            model.addObject(secret.getMetadata().getName(), flatObj);
+        log.info("Collecting Secrets...");
+        try {
+            List<Secret> secrets = client.secrets()
+                    .inNamespace(namespace).list().getItems();
+            for (Secret secret : secrets) {
+                FlatObjectModel flatObj = convertToFlatObjectModel(secret);
+                model.addObject(secret.getMetadata().getName(), flatObj);
+            }
+            log.info("Collected {} Secrets", secrets.size());
+        } catch (Exception e) {
+            log.error("Failed to collect Secrets", e);
         }
-        log.debug("Collected {} Secrets", secrets.size());
 
         // Collect Pods
         // List<Pod> pods = client.pods()

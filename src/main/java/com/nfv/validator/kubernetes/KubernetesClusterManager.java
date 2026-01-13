@@ -1,27 +1,42 @@
 package com.nfv.validator.kubernetes;
 
 import io.fabric8.kubernetes.client.Config;
+import io.fabric8.kubernetes.client.ConfigBuilder;
+import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClient;
-import io.fabric8.kubernetes.client.KubernetesClientBuilder;
 import lombok.extern.slf4j.Slf4j;
 
-import java.util.HashMap;
+import javax.enterprise.context.ApplicationScoped;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * Manager for multiple Kubernetes cluster connections
+ * Manager for multiple Kubernetes cluster connections.
+ * Thread-safe for parallel batch execution.
  */
 @Slf4j
+@ApplicationScoped
 public class KubernetesClusterManager {
     
-    private Map<String, KubernetesClient> clients = new HashMap<>();
-    private KubernetesClient defaultClient;
+    private final Map<String, KubernetesClient> clients = new ConcurrentHashMap<>();
+    private volatile KubernetesClient defaultClient;
     
     public KubernetesClusterManager() {
-        // Initialize default client from current context
-        this.defaultClient = new KubernetesClientBuilder().build();
-        this.clients.put("current", defaultClient);
-        log.info("Initialized default Kubernetes client from current context");
+        // Lazy initialization - do NOT create client in constructor to avoid Quarkus classloader issues
+        log.info("KubernetesClusterManager initialized (client will be created on first use)");
+    }
+    
+    private synchronized KubernetesClient getDefaultClient() {
+        if (defaultClient == null) {
+            Config config = new ConfigBuilder()
+                    .withConnectionTimeout(10000)
+                    .withRequestTimeout(30000)
+                    .build();
+            defaultClient = new DefaultKubernetesClient(config);
+            clients.put("current", defaultClient);
+            log.info("Initialized default Kubernetes client from current context with 10s connection timeout");
+        }
+        return defaultClient;
     }
     
     /**
@@ -30,7 +45,7 @@ public class KubernetesClusterManager {
      */
     public KubernetesClient getClient(String clusterName) {
         if (clusterName == null || clusterName.equals("current")) {
-            return defaultClient;
+            return getDefaultClient();
         }
         
         return clients.computeIfAbsent(clusterName, name -> {
@@ -38,14 +53,12 @@ public class KubernetesClusterManager {
                 // Try to load from kubeconfig with specific context
                 // Note: This attempts to use the context name, may fall back to default
                 Config config = Config.autoConfigure(name);
-                KubernetesClient client = new KubernetesClientBuilder()
-                        .withConfig(config)
-                        .build();
+                KubernetesClient client = new DefaultKubernetesClient(config);
                 log.info("Created client for cluster: {}", name);
                 return client;
             } catch (Exception e) {
                 log.warn("Failed to create client for cluster {}, using default: {}", name, e.getMessage());
-                return defaultClient;
+                return getDefaultClient();
             }
         });
     }
@@ -56,13 +69,6 @@ public class KubernetesClusterManager {
     public void addClient(String clusterName, KubernetesClient client) {
         clients.put(clusterName, client);
         log.info("Added client for cluster: {}", clusterName);
-    }
-    
-    /**
-     * Get the default client
-     */
-    public KubernetesClient getDefaultClient() {
-        return defaultClient;
     }
     
     /**

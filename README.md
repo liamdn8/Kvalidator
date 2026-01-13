@@ -2,23 +2,57 @@
 
 Tool tự động kiểm tra và validate cấu hình trên môi trường ảo hóa và cloud cho viễn thông (NFV Infrastructure).
 
+## 🚀 New: REST API Support
+
+KValidator now supports REST API for web-based validation! 
+
+**Quick Start:**
+```bash
+# Start API server
+mvn quarkus:dev
+
+# Open Swagger UI
+http://localhost:8080/swagger-ui
+
+# Submit validation via API
+curl -X POST http://localhost:8080/api/validate \
+  -H "Content-Type: application/json" \
+  -d '{"namespaces":["default","kube-system"]}'
+```
+
+**📖 Full API Documentation:** See [API_GUIDE.md](API_GUIDE.md), [API_CHEATSHEET.md](API_CHEATSHEET.md)
+
+---
+
 ## Tính năng
 
-### 1. Đối chiếu thiết kế hệ thống so với thực tế triển khai
+### 1. REST API (MỚI) 🌐
+- **Async job processing**: Submit job, track progress, download results
+- **Dual export**: Excel + JSON for web display
+- **Real-time progress**: Track validation progress (0-100%)
+- **Swagger UI**: Interactive API documentation
+- **Ready for web integration**: CORS enabled, JSON API
+
+### 2. Đối chiếu thiết kế hệ thống so với thực tế triển khai
 - So sánh cấu hình Kubernetes từ file YAML design/baseline với môi trường đang chạy
 - Phát hiện sự khác biệt giữa bản thiết kế và triển khai thực tế
 
-### 2. Đối chiếu, so sánh các môi trường với nhau
+### 3. Đối chiếu, so sánh các môi trường với nhau
 - So sánh nhiều namespace/cluster với nhau (dev, staging, production)
 - Hỗ trợ so sánh pairwise hoặc so với baseline
 - Phát hiện inconsistency giữa các môi trường
 
-### 3. Field filtering với config
+### 4. Batch validation mode
+- Chạy nhiều validation cùng lúc từ một file cấu hình (JSON hoặc YAML)
+- Hỗ trợ cả sequential và parallel execution
+- Tự động tạo báo cáo cho từng validation
+
+### 5. Field filtering với config
 - Ignore các trường không cần thiết (metadata.uid, status, v.v.)
 - Config file YAML linh hoạt, có thể tùy chỉnh
 - Hỗ trợ prefix matching (ví dụ: `metadata.annotations` match tất cả annotations)
 
-### 4. Excel export
+### 6. Excel export
 - Export kết quả ra file Excel với 2 sheets:
   - **Summary**: Ma trận so sánh tổng quan với color coding
   - **Details**: Chi tiết từng field khác biệt
@@ -94,21 +128,70 @@ java -jar kvalidator.jar -o report.xlsx app-dev app-staging app-prod
 java -jar kvalidator.jar -b baseline.yaml -o baseline-report.xlsx app-dev app-staging
 ```
 
-### 4. Verbose mode (chi tiết)
+### 4. Batch validation mode (MỚI)
+
+```bash
+# Chạy nhiều validations từ file cấu hình
+java -jar kvalidator.jar -r validation-request.yaml
+
+# Hoặc sử dụng JSON format
+java -jar kvalidator.jar -r validation-request.json
+```
+
+**Ví dụ file `validation-request.yaml`:**
+
+```yaml
+version: "1.0"
+description: "Validate multiple environments"
+
+settings:
+  maxParallelRequests: 2  # Chạy song song 2 requests
+  outputDirectory: "reports"
+  continueOnError: true
+
+requests:
+  # So sánh dev environments
+  - name: "dev-comparison"
+    type: "namespace-comparison"
+    namespaces:
+      - "cluster1/app-dev"
+      - "cluster2/app-dev"
+    output: "dev-comparison.xlsx"
+  
+  # So sánh staging environments  
+  - name: "staging-comparison"
+    type: "namespace-comparison"
+    namespaces:
+      - "cluster1/app-staging"
+      - "cluster2/app-staging"
+    output: "staging-comparison.xlsx"
+  
+  # Validate với baseline
+  - name: "baseline-validation"
+    type: "baseline-comparison"
+    baseline: "designs/production-baseline.yaml"
+    namespaces:
+      - "cluster1/app-prod"
+    output: "baseline-validation.xlsx"
+```
+
+Xem thêm examples tại: `validation-request-example.yaml`, `validation-request-example.json`
+
+### 5. Verbose mode (chi tiết)
 
 ```bash
 # Hiển thị chi tiết tất cả differences
 java -jar kvalidator.jar -v app-dev app-staging
 ```
 
-### 5. Filter theo resource kinds
+### 6. Filter theo resource kinds
 
 ```bash
 # Chỉ so sánh Deployment và Service
 java -jar kvalidator.jar -k Deployment,Service app-dev app-prod
 ```
 
-### 6. Custom validation config
+### 7. Custom validation config
 
 ```bash
 # Sử dụng config file riêng
@@ -119,11 +202,16 @@ java -jar kvalidator.jar -f my-config.yaml app-dev app-prod
 
 ```
 USAGE:
+  # Single validation mode
   java -jar kvalidator.jar [OPTIONS] namespace1 namespace2 [namespace3 ...]
   java -jar kvalidator.jar [OPTIONS] -b <baseline-path> namespace1 [namespace2 ...]
+  
+  # Batch validation mode
+  java -jar kvalidator.jar -r <request-file>
 
 OPTIONS:
   -h, --help              Display help message
+  -r, --request-file FILE Path to batch validation request file (JSON or YAML)
   -b, --baseline PATH     Path to baseline YAML file or directory
   -c, --cluster NAME      Default cluster name (default: current context)
   -k, --kinds KIND1,...   Resource kinds to compare (Deployment,Service,...)
@@ -184,6 +272,56 @@ java -jar kvalidator.jar -v \
 ```
 
 **Kết quả**: Hiển thị ngay trên console tất cả differences của Deployment và StatefulSet.
+
+### Ví dụ 4: Batch validation cho nhiều môi trường (MỚI)
+
+**Tạo file `multi-env-validation.yaml`:**
+
+```yaml
+version: "1.0"
+description: "Daily validation for all environments"
+
+settings:
+  maxParallelRequests: 3
+  outputDirectory: "daily-reports"
+  continueOnError: true
+
+requests:
+  - name: "dev-clusters-comparison"
+    type: "namespace-comparison"
+    namespaces:
+      - "cluster1/app-dev"
+      - "cluster2/app-dev"
+      - "cluster3/app-dev"
+    output: "dev-comparison.xlsx"
+    
+  - name: "staging-clusters-comparison"
+    type: "namespace-comparison"
+    namespaces:
+      - "cluster1/app-staging"
+      - "cluster2/app-staging"
+    output: "staging-comparison.xlsx"
+    
+  - name: "prod-baseline-validation"
+    type: "baseline-comparison"
+    baseline: "designs/prod-baseline.yaml"
+    namespaces:
+      - "cluster1/app-prod"
+      - "cluster2/app-prod"
+    output: "prod-validation.xlsx"
+```
+
+**Chạy batch validation:**
+
+```bash
+java -jar kvalidator.jar -r multi-env-validation.yaml
+```
+
+**Kết quả**: 
+- 3 validations chạy song song
+- Tạo 3 file Excel reports trong thư mục `daily-reports/`
+- Summary hiển thị trạng thái của từng validation
+- Có thể tích hợp vào CI/CD pipeline
 
 ## Excel Report Structure
 

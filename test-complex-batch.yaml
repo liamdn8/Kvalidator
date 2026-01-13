@@ -1,0 +1,29 @@
+settings:
+  maxParallelRequests: 3
+  outputDirectory: "complex-test-reports"
+
+requests:
+  - name: "Dev-vs-Staging"
+    namespaces:
+      - "kind-kind-infra-test/app-dev"
+      - "kind-kind-infra-test/app-staging"
+    output: "dev-vs-staging.xlsx"
+
+  - name: "Dev-vs-Prod"
+    namespaces:
+      - "kind-kind-infra-test/app-dev"
+      - "kind-kind-infra-test/app-prod"
+    output: "dev-vs-prod.xlsx"
+
+  - name: "Staging-vs-Prod"
+    namespaces:
+      - "kind-kind-infra-test/app-staging"
+      - "kind-kind-infra-test/app-prod"
+    output: "staging-vs-prod.xlsx"
+
+  - name: "All-Three-Environments"
+    namespaces:
+      - "kind-kind-infra-test/app-dev"
+      - "kind-kind-infra-test/app-staging"
+      - "kind-kind-infra-test/app-prod"
+    output: "all-three-envs.xlsx"

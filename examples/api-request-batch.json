@@ -1,0 +1,33 @@
+{
+  "requests": [
+    {
+      "name": "Dev vs Staging",
+      "namespaces": [
+        "kind-kind-infra-test/app-dev",
+        "kind-kind-infra-test/app-staging"
+      ],
+      "verbose": false
+    },
+    {
+      "name": "Staging vs Production",
+      "namespaces": [
+        "kind-kind-infra-test/app-staging",
+        "kind-kind-infra-test/app-prod"
+      ],
+      "verbose": false
+    },
+    {
+      "name": "All Three Environments",
+      "namespaces": [
+        "kind-kind-infra-test/app-dev",
+        "kind-kind-infra-test/app-staging",
+        "kind-kind-infra-test/app-prod"
+      ],
+      "verbose": false
+    }
+  ],
+  "globalSettings": {
+    "maxParallelRequests": 3,
+    "outputDirectory": "api-batch-results"
+  }
+}

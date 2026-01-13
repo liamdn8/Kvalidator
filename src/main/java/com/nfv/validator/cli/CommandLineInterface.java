@@ -1,10 +1,14 @@
 package com.nfv.validator.cli;
 
+import com.nfv.validator.batch.BatchExecutor;
+import com.nfv.validator.batch.BatchRequestLoader;
 import com.nfv.validator.comparison.NamespaceComparator;
 import com.nfv.validator.config.ConfigLoader;
 import com.nfv.validator.config.ValidationConfig;
 import com.nfv.validator.kubernetes.K8sDataCollector;
 import com.nfv.validator.kubernetes.KubernetesClusterManager;
+import com.nfv.validator.model.batch.BatchExecutionResult;
+import com.nfv.validator.model.batch.BatchValidationRequest;
 import com.nfv.validator.model.comparison.NamespaceComparison;
 import com.nfv.validator.model.comparison.ObjectComparison;
 import com.nfv.validator.model.FlatNamespaceModel;
@@ -44,6 +48,13 @@ public class CommandLineInterface {
         options.addOption(Option.builder("h")
                 .longOpt("help")
                 .desc("Display help information")
+                .build());
+        
+        options.addOption(Option.builder("r")
+                .longOpt("request-file")
+                .hasArg()
+                .argName("request-file")
+                .desc("Path to batch validation request file (JSON or YAML)")
                 .build());
         
         options.addOption(Option.builder("c")
@@ -101,6 +112,12 @@ public class CommandLineInterface {
             return;
         }
 
+        // Check for batch mode
+        if (cmd.hasOption("r")) {
+            executeBatchMode(cmd.getOptionValue("r"));
+            return;
+        }
+
         String defaultCluster = cmd.getOptionValue("c", "current");
         String[] kinds = cmd.hasOption("k") ? cmd.getOptionValue("k").split(",") : null;
         boolean verbose = cmd.hasOption("v");
@@ -137,6 +154,73 @@ public class CommandLineInterface {
         }
 
         compareNamespaces(namespaceArgs, defaultCluster, kinds, verbose, excelOutput, baselinePath);
+    }
+    
+    /**
+     * Execute batch mode from request file
+     */
+    private void executeBatchMode(String requestFilePath) throws Exception {
+        System.out.println("╔══════════════════════════════════════════════════════════════════╗");
+        System.out.println("║       KValidator - Batch Validation Mode                         ║");
+        System.out.println("╚══════════════════════════════════════════════════════════════════╝");
+        System.out.println();
+        
+        System.out.println("📁 Loading batch request from: " + requestFilePath);
+        
+        // Load batch request
+        BatchRequestLoader loader = new BatchRequestLoader();
+        BatchValidationRequest batchRequest = loader.load(requestFilePath);
+        
+        System.out.printf("   ✓ Loaded %d validation requests%n", batchRequest.getRequests().size());
+        
+        if (batchRequest.getDescription() != null) {
+            System.out.println("   Description: " + batchRequest.getDescription());
+        }
+        
+        System.out.println();
+        
+        // Execute batch
+        BatchExecutor executor = new BatchExecutor();
+        BatchExecutionResult result = executor.execute(batchRequest);
+        
+        // Print summary
+        System.out.println();
+        System.out.println("╔══════════════════════════════════════════════════════════════════╗");
+        System.out.println("║                   Batch Execution Summary                         ║");
+        System.out.println("╚══════════════════════════════════════════════════════════════════╝");
+        System.out.println();
+        System.out.printf("Total Requests:      %d%n", result.getTotalRequests());
+        System.out.printf("✅ Successful:       %d%n", result.getSuccessfulRequests());
+        System.out.printf("❌ Failed:           %d%n", result.getFailedRequests());
+        System.out.println();
+        
+        // Print individual results
+        System.out.println("Individual Results:");
+        System.out.println("─────────────────────────────────────────────────────────────────");
+        
+        for (BatchExecutionResult.RequestResult reqResult : result.getRequestResults()) {
+            String status = reqResult.isSuccess() ? "✅ SUCCESS" : "❌ FAILED";
+            System.out.printf("%-40s %s%n", reqResult.getRequestName(), status);
+            
+            if (reqResult.isSuccess()) {
+                if (reqResult.getOutputPath() != null) {
+                    System.out.printf("   Output: %s%n", reqResult.getOutputPath());
+                }
+                System.out.printf("   Objects compared: %d, Differences: %d%n", 
+                        reqResult.getObjectsCompared(), reqResult.getDifferencesFound());
+                System.out.printf("   Execution time: %.2f seconds%n", reqResult.getExecutionTimeMs() / 1000.0);
+            } else {
+                System.out.printf("   Error: %s%n", reqResult.getErrorMessage());
+            }
+            System.out.println();
+        }
+        
+        System.out.println("─────────────────────────────────────────────────────────────────");
+        
+        // Exit with appropriate code
+        if (!result.isAllSuccessful()) {
+            System.exit(1);
+        }
     }
 
     private void compareNamespaces(List<String> namespaceArgs, String defaultCluster, 
@@ -330,14 +414,20 @@ public class CommandLineInterface {
         System.out.println("KValidator - NFV Infrastructure Validation Tool");
         System.out.println();
         System.out.println("USAGE:");
+        System.out.println("  # Single validation mode");
         System.out.println("  java -jar kvalidator.jar [OPTIONS] namespace1 namespace2 [namespace3 ...]");
         System.out.println("  java -jar kvalidator.jar [OPTIONS] -b <baseline-path> namespace1 [namespace2 ...]");
+        System.out.println();
+        System.out.println("  # Batch validation mode");
+        System.out.println("  java -jar kvalidator.jar -r <request-file>");
         System.out.println();
         System.out.println("ARGUMENTS:");
         System.out.println("  namespaceN              Namespace to compare. Format: [cluster-name/]namespace");
         System.out.println();
         System.out.println("OPTIONS:");
         System.out.println("  -h, --help              Display this help message");
+        System.out.println("  -r, --request-file FILE Path to batch validation request file (JSON or YAML)");
+        System.out.println("                          Run multiple validations from a single file");
         System.out.println("  -b, --baseline PATH     Path to baseline YAML file or directory");
         System.out.println("                          Compare namespaces against design/expected state");
         System.out.println("  -c, --cluster NAME      Default cluster name (default: current context)");
@@ -350,11 +440,14 @@ public class CommandLineInterface {
         System.out.println("                          (e.g., report.xlsx)");
         System.out.println();
         System.out.println("EXAMPLES:");
-        System.out.println("  # Compare two namespaces in current cluster");
+        System.out.println("  # Single validation - Compare two namespaces in current cluster");
         System.out.println("  java -jar kvalidator.jar app-dev app-prod");
         System.out.println();
-        System.out.println("  # Compare namespaces against baseline design");
+        System.out.println("  # Single validation - Compare namespaces against baseline design");
         System.out.println("  java -jar kvalidator.jar -b baseline.yaml app-dev app-staging app-prod");
+        System.out.println();
+        System.out.println("  # Batch validation - Run multiple validations from request file");
+        System.out.println("  java -jar kvalidator.jar -r validation-request.yaml");
         System.out.println();
         System.out.println("  # Compare against baseline directory and export");
         System.out.println("  java -jar kvalidator.jar -b design/ -o report.xlsx app-dev app-prod");

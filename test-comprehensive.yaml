@@ -1,0 +1,23 @@
+settings:
+  maxParallelRequests: 3
+  outputDirectory: "comprehensive-test"
+
+requests:
+  # Test 1: 2-namespace comparison
+  - name: "Dev vs Staging"
+    namespaces:
+      - "kind-kind-infra-test/app-dev"
+      - "kind-kind-infra-test/app-staging"
+
+  # Test 2: 3-namespace comparison
+  - name: "All Three Environments"
+    namespaces:
+      - "kind-kind-infra-test/app-dev"
+      - "kind-kind-infra-test/app-staging"
+      - "kind-kind-infra-test/app-prod"
+
+  # Test 3: Another 2-namespace comparison
+  - name: "Staging vs Production"
+    namespaces:
+      - "kind-kind-infra-test/app-staging"
+      - "kind-kind-infra-test/app-prod"

@@ -1,0 +1,63 @@
+version: "1.0"
+description: "Test batch validation với KinD cluster"
+
+settings:
+  maxParallelRequests: 2
+  outputDirectory: "test-reports"
+  continueOnError: true
+  generateSummaryReport: true
+  summaryReportPath: "test-reports/batch-summary.xlsx"
+
+requests:
+  # So sánh dev vs staging
+  - name: "dev-vs-staging"
+    type: "namespace-comparison"
+    namespaces:
+      - "app-dev"
+      - "app-staging"
+    kinds:
+      - "Deployment"
+      - "Service"
+      - "ConfigMap"
+    output: "dev-vs-staging.xlsx"
+    verbose: false
+  
+  # So sánh staging vs prod
+  - name: "staging-vs-prod"
+    type: "namespace-comparison"
+    namespaces:
+      - "app-staging"
+      - "app-prod"
+    kinds:
+      - "Deployment"
+      - "Service"
+      - "ConfigMap"
+    output: "staging-vs-prod.xlsx"
+    verbose: false
+  
+  # So sánh dev vs prod
+  - name: "dev-vs-prod"
+    type: "namespace-comparison"
+    namespaces:
+      - "app-dev"
+      - "app-prod"
+    kinds:
+      - "Deployment"
+      - "Service"
+      - "ConfigMap"
+    output: "dev-vs-prod.xlsx"
+    verbose: false
+  
+  # Validate với baseline
+  - name: "baseline-validation"
+    type: "baseline-comparison"
+    baseline: "baseline-design.yaml"
+    namespaces:
+      - "app-dev"
+      - "app-staging"
+      - "app-prod"
+    kinds:
+      - "Deployment"
+      - "Service"
+    output: "baseline-validation.xlsx"
+    verbose: false

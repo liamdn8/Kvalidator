@@ -1,0 +1,98 @@
+# KValidator Batch Validation Request Example
+# This file demonstrates how to configure multiple validation requests in a single file
+
+version: "1.0"
+
+description: "Example batch validation for multiple environments"
+
+# Global settings (optional)
+settings:
+  # Default cluster to use if not specified in individual requests
+  defaultCluster: "current"
+  
+  # Default validation config file for all requests
+  defaultConfigFile: "validation-config.yaml"
+  
+  # Continue execution even if one request fails
+  continueOnError: true
+  
+  # Maximum number of requests to execute in parallel
+  # 0 or 1 = sequential execution
+  # 2+ = parallel execution
+  maxParallelRequests: 2
+  
+  # Output directory for all generated reports
+  outputDirectory: "reports"
+  
+  # Generate a summary report for the entire batch
+  generateSummaryReport: true
+  
+  # Path to the batch summary report
+  summaryReportPath: "reports/batch-summary.xlsx"
+
+# List of validation requests
+requests:
+  # Request 1: Compare dev environments across clusters
+  - name: "dev-comparison"
+    type: "namespace-comparison"
+    namespaces:
+      - "cluster1/app-dev"
+      - "cluster2/app-dev"
+    kinds:
+      - "Deployment"
+      - "Service"
+      - "ConfigMap"
+    output: "dev-comparison.xlsx"
+    verbose: true
+  
+  # Request 2: Compare staging environments
+  - name: "staging-comparison"
+    type: "namespace-comparison"
+    namespaces:
+      - "cluster1/app-staging"
+      - "cluster2/app-staging"
+    output: "staging-comparison.xlsx"
+    verbose: false
+  
+  # Request 3: Compare production environments
+  - name: "prod-comparison"
+    type: "namespace-comparison"
+    namespaces:
+      - "cluster1/app-prod"
+      - "cluster2/app-prod"
+    kinds:
+      - "Deployment"
+      - "StatefulSet"
+      - "Service"
+    output: "prod-comparison.xlsx"
+    verbose: true
+  
+  # Request 4: Validate prod against baseline design
+  - name: "baseline-validation-prod"
+    type: "baseline-comparison"
+    baseline: "designs/production-baseline.yaml"
+    namespaces:
+      - "cluster1/app-prod"
+    output: "baseline-validation-prod.xlsx"
+    verbose: true
+  
+  # Request 5: Validate staging against baseline
+  - name: "baseline-validation-staging"
+    type: "baseline-comparison"
+    baseline: "designs/staging-baseline.yaml"
+    namespaces:
+      - "cluster1/app-staging"
+      - "cluster2/app-staging"
+    output: "baseline-validation-staging.xlsx"
+    verbose: false
+  
+  # Request 6: Compare all three environments in cluster1
+  - name: "cluster1-env-comparison"
+    type: "namespace-comparison"
+    defaultCluster: "cluster1"
+    namespaces:
+      - "app-dev"
+      - "app-staging"
+      - "app-prod"
+    output: "cluster1-all-envs.xlsx"
+    verbose: true

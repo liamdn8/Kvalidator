@@ -1,0 +1,76 @@
+{
+  "version": "1.0",
+  "description": "Example batch validation for multiple environments (JSON format)",
+  "settings": {
+    "defaultCluster": "current",
+    "defaultConfigFile": "validation-config.yaml",
+    "continueOnError": true,
+    "maxParallelRequests": 2,
+    "outputDirectory": "reports",
+    "generateSummaryReport": true,
+    "summaryReportPath": "reports/batch-summary.xlsx"
+  },
+  "requests": [
+    {
+      "name": "dev-comparison",
+      "type": "namespace-comparison",
+      "namespaces": [
+        "cluster1/app-dev",
+        "cluster2/app-dev"
+      ],
+      "kinds": [
+        "Deployment",
+        "Service",
+        "ConfigMap"
+      ],
+      "output": "dev-comparison.xlsx",
+      "verbose": true
+    },
+    {
+      "name": "staging-comparison",
+      "type": "namespace-comparison",
+      "namespaces": [
+        "cluster1/app-staging",
+        "cluster2/app-staging"
+      ],
+      "output": "staging-comparison.xlsx",
+      "verbose": false
+    },
+    {
+      "name": "prod-comparison",
+      "type": "namespace-comparison",
+      "namespaces": [
+        "cluster1/app-prod",
+        "cluster2/app-prod"
+      ],
+      "kinds": [
+        "Deployment",
+        "StatefulSet",
+        "Service"
+      ],
+      "output": "prod-comparison.xlsx",
+      "verbose": true
+    },
+    {
+      "name": "baseline-validation-prod",
+      "type": "baseline-comparison",
+      "baseline": "designs/production-baseline.yaml",
+      "namespaces": [
+        "cluster1/app-prod"
+      ],
+      "output": "baseline-validation-prod.xlsx",
+      "verbose": true
+    },
+    {
+      "name": "baseline-validation-staging",
+      "type": "baseline-comparison",
+      "baseline": "designs/staging-baseline.yaml",
+      "namespaces": [
+        "cluster1/app-staging",
+        "cluster2/app-staging"
+      ],
+      "output": "baseline-validation-staging.xlsx",
+      "verbose": false
+    }
+  ]
+}

@@ -1,0 +1,5 @@
+{
+  "namespaces": ["app-dev", "app-prod"],
+  "description": "Test validation API",
+  "exportExcel": true
+}

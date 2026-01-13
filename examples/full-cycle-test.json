@@ -1,0 +1,5 @@
+{
+  "namespaces": ["app-dev", "app-staging", "app-prod"],
+  "description": "Full cycle validation test: Dev vs Staging vs Prod",
+  "exportExcel": true
+}

@@ -1,0 +1,30 @@
+version: "1.0"
+description: "Demo batch validation with sample YAML data"
+
+settings:
+  maxParallelRequests: 1
+  outputDirectory: "demo-reports"
+  generateSummaryReport: true
+  summaryReportPath: "demo-reports/batch-summary-report.xlsx"
+
+requests:
+  # Demo comparison 1: dev vs staging vs baseline
+  - name: "dev-staging-comparison"
+    type: "baseline-comparison"
+    baseline: "baseline-design.yaml"
+    namespaces:
+      - "demo-dev"
+      - "demo-staging"
+    output: "dev-staging-comparison.xlsx"
+    verbose: false
+    
+  # Demo comparison 2: all environments vs baseline
+  - name: "all-envs-comparison"
+    type: "baseline-comparison"
+    baseline: "baseline-design.yaml"
+    namespaces:
+      - "demo-dev"
+      - "demo-staging"
+      - "demo-prod"
+    output: "all-envs-comparison.xlsx"
+    verbose: false

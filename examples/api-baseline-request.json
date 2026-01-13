@@ -1,0 +1,7 @@
+{
+  "namespaces": ["baseline-example"],
+  "baselinePath": "./baseline-example.yaml",
+  "description": "Validate against baseline design spec",
+  "exportExcel": true,
+  "configFile": "./validation-config.yaml"
+}

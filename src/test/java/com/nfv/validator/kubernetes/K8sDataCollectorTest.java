@@ -4,7 +4,7 @@ import com.nfv.validator.model.FlatNamespaceModel;
 import com.nfv.validator.model.FlatObjectModel;
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.KubernetesClient;
-import io.fabric8.kubernetes.client.KubernetesClientBuilder;
+import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import org.junit.jupiter.api.*;
 
 import java.util.Arrays;
@@ -29,9 +29,7 @@ class K8sDataCollectorTest {
         try {
             // Try to connect to default cluster
             Config config = Config.autoConfigure(null);
-            client = new KubernetesClientBuilder()
-                    .withConfig(config)
-                    .build();
+            client = new DefaultKubernetesClient(config);
             
             // Test connection by listing namespaces
             client.namespaces().list();

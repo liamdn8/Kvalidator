@@ -1,0 +1,15 @@
+settings:
+  maxParallelRequests: 2
+  outputDirectory: "test-reports"
+
+requests:
+  - name: "Staging-vs-Prod"
+    namespaces:
+      - "kind-kind-infra-test/app-staging"
+      - "kind-kind-infra-test/app-prod"
+
+  - name: "All-Three-Environments"
+    namespaces:
+      - "kind-kind-infra-test/app-dev"
+      - "kind-kind-infra-test/app-staging"
+      - "kind-kind-infra-test/app-prod"

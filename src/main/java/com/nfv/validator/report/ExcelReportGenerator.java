@@ -270,7 +270,8 @@ public class ExcelReportGenerator {
      * Get comparison key for two namespaces
      */
     private String getComparisonKey(FlatNamespaceModel ns1, FlatNamespaceModel ns2) {
-        return ns1.getName() + "_vs_" + ns2.getName();
+        return ns1.getClusterName() + "/" + ns1.getName() + 
+               "_vs_" + ns2.getClusterName() + "/" + ns2.getName();
     }
     
     /**

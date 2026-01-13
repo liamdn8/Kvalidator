@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KValidator Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --surface: #ffffff;
+            --border-color: #e6e9ef;
+            --muted: #6c757d;
+        }
+
+        body {
+            background-color: #f5f6f8;
+        }
+
+        .icon-sm {
+            width: 18px;
+            height: 18px;
+            vertical-align: text-bottom;
+        }
+
+        .status-summary {
+            padding: 12px 16px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            gap: 18px;
+        }
+
+        .status-summary .badge {
+            font-size: 0.75rem;
+        }
+
+        .mode-toggle {
+            background-color: #eef2f6;
+            border-radius: 10px;
+            padding: 4px;
+            display: inline-flex;
+            gap: 6px;
+        }
+
+        .mode-toggle .btn {
+            border-radius: 8px;
+            padding: 6px 18px;
+            font-weight: 600;
+        }
+
+        .section-title {
+            font-size: 0.75rem;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--muted);
+        }
+
+        .selection-table thead {
+            background-color: #f1f3f5;
+        }
+
+        .selection-table th {
+            font-weight: 600;
+            font-size: 0.78rem;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .selection-table td {
+            vertical-align: middle;
+            padding-top: 14px;
+            padding-bottom: 14px;
+        }
+
+        .selection-table .form-select {
+            font-size: 1rem;
+            min-height: 44px;
+        }
+
+        .baseline-upload {
+            border: 1px dashed var(--border-color);
+            border-radius: 12px;
+            padding: 16px;
+            background-color: #f8f9fa;
+        }
+
+        .baseline-upload.has-file {
+            border-style: solid;
+        }
+
+        .console-output {
+            background-color: #f8f9fa;
+            border: 1px solid var(--border-color);
+            padding: 10px;
+            height: 220px;
+            overflow-y: auto;
+            font-family: "SFMono-Regular", ui-monospace, "Liberation Mono", monospace;
+            font-size: 0.85rem;
+        }
+
+        .table-empty {
+            color: var(--muted);
+        }
+
+        .form-text {
+            font-size: 0.8rem;
+        }
+
+        .small-label {
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
+
+        .status-mini {
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+<body>
+
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary shadow-sm">
+        <div class="container">
+            <a class="navbar-brand d-flex align-items-center gap-2" href="#">
+                <i data-lucide="shield-check" class="icon-sm"></i>
+                <span>KValidator</span>
+            </a>
+            <span class="navbar-text text-light">NFV Infrastructure Validation Service</span>
+        </div>
+    </nav>
+
+    <div class="container py-4 pb-5">
+        <div class="d-flex flex-column gap-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="card-title mb-0 d-flex align-items-center gap-2">
+                        <i data-lucide="workflow" class="icon-sm"></i>
+                        Validation Configuration
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <form id="validationForm" class="d-flex flex-column gap-4">
+                        <div>
+                            <label class="form-label">Validation Mode</label>
+                            <div class="mode-toggle">
+                                <button type="button" class="btn btn-primary btn-sm" id="manualModeBtn">
+                                    <i data-lucide="sliders" class="icon-sm me-1"></i>Manual Selection
+                                </button>
+                                <button type="button" class="btn btn-light btn-sm" id="quickModeBtn">
+                                    <i data-lucide="zap" class="icon-sm me-1"></i>Quick Validation
+                                </button>
+                            </div>
+                        </div>
+
+                        <div id="manualSection" class="d-flex flex-column gap-3">
+                            <div>
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span class="section-title">Baseline (Reference)</span>
+                                    <span class="small text-muted">Optional</span>
+                                </div>
+                                <div class="row g-3">
+                                    <div class="col-6">
+                                        <label for="baselineClusterSelect" class="form-label">Cluster</label>
+                                        <select class="form-select form-select-sm" id="baselineClusterSelect">
+                                            <option value="">Loading clusters...</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-6">
+                                        <label for="baselineNamespaceSelect" class="form-label">Namespace</label>
+                                        <select class="form-select form-select-sm" id="baselineNamespaceSelect" disabled>
+                                            <option value="">Select cluster first...</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="form-text">Choose a reference namespace. Leave empty to compare targets pairwise or use a baseline file.</div>
+                            </div>
+
+                            <div>
+                                <div class="d-flex justify-content-between align-items-center mb-2">
+                                    <span class="section-title">Targets (Cluster / Namespace)</span>
+                                    <button type="button" class="btn btn-outline-primary btn-sm" id="addTargetBtn">
+                                        <i data-lucide="plus" class="icon-sm me-1"></i>Add Target
+                                    </button>
+                                </div>
+                                <div class="table-responsive">
+                                    <table class="table selection-table align-middle mb-0">
+                                        <thead>
+                                            <tr>
+                                                <th style="width: 40%;">Cluster</th>
+                                                <th style="width: 40%;">Namespace</th>
+                                                <th style="width: 20%;" class="text-center">Remove</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="targetsTableBody">
+                                            <tr class="table-empty"><td colspan="3" class="text-center small">Add targets to compare namespaces.</td></tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="quickSection" class="d-none d-flex flex-column gap-3">
+                            <div>
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span class="section-title">Quick Validation</span>
+                                    <span class="small text-muted">Search across all clusters</span>
+                                </div>
+                                <p class="small text-muted mb-3">Enter a namespace keyword to scan every registered cluster. Choose which matches to include and pick one baseline to compare against.</p>
+                            </div>
+
+                            <div class="row g-2 align-items-center">
+                                <div class="col-sm">
+                                    <div class="input-group">
+                                        <span class="input-group-text"><i data-lucide="search" class="icon-sm"></i></span>
+                                        <input type="text" id="quickSearchInput" class="form-control" placeholder="e.g., app, staging, dev">
+                                    </div>
+                                </div>
+                                <div class="col-auto">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" id="quickExactMatch">
+                                        <label class="form-check-label small" for="quickExactMatch">Exact Match</label>
+                                    </div>
+                                </div>
+                                <div class="col-auto">
+                                    <button type="button" class="btn btn-outline-primary" id="quickSearchBtn">
+                                        <i data-lucide="scan-search" class="icon-sm me-1"></i>Search
+                                    </button>
+                                </div>
+                            </div>
+
+                            <div id="quickResultsPanel" class="border rounded p-3 bg-light d-none">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <div class="fw-semibold" id="quickResultsCount">Found 0 namespace(s)</div>
+                                    <div class="small text-muted" id="quickSearchMeta"></div>
+                                </div>
+
+                                <div class="mb-3">
+                                    <label for="quickBaselineSelect" class="form-label mb-1">Baseline (Reference)</label>
+                                    <select id="quickBaselineSelect" class="form-select form-select-sm">
+                                        <option value="">Select a namespace...</option>
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <label class="form-label mb-0">Targets</label>
+                                        <span class="small text-muted" id="quickTargetsMeta"></span>
+                                    </div>
+                                    <div id="quickTargetsList" class="list-group list-group-flush border rounded"></div>
+                                </div>
+                            </div>
+
+                            <div id="quickStatusMessage" class="small text-muted">Search to discover namespaces.</div>
+                        </div>
+
+                        <div>
+                            <label class="form-label">Baseline Reference (Optional)</label>
+                            <div class="row g-3 align-items-end">
+                                <div class="col-md-6">
+                                    <div class="baseline-upload" id="baselineUploadWrapper">
+                                        <div class="d-flex flex-column gap-2">
+                                            <div>
+                                                <div class="fw-semibold">Upload YAML Baseline</div>
+                                                <div class="small text-muted" id="baselineUploadStatus">No file selected.</div>
+                                            </div>
+                                            <div class="d-flex flex-wrap gap-2 align-items-center">
+                                                <input type="file" class="form-control flex-grow-1" id="baselineUploadInput" accept=".yaml,.yml" aria-label="Upload baseline YAML file">
+                                                <button type="button" class="btn btn-sm btn-outline-danger d-none" id="baselineUploadClear">
+                                                    <i data-lucide="x-circle" class="icon-sm me-1"></i>Remove
+                                                </button>
+                                            </div>
+                                            <div class="small text-muted" id="baselineUploadMeta" hidden></div>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <label for="baselineInput" class="form-label">Or Provide Server Path</label>
+                                    <input type="text" class="form-control" id="baselineInput" placeholder="/path/to/baseline.yaml">
+                                    <div class="form-text">Advanced option for pre-existing files on the server.</div>
+                                </div>
+                            </div>
+                            <div class="form-text mt-2">Baseline files are parsed in the browser; no data is sent to the server.</div>
+                        </div>
+
+                        <div id="formError" class="alert alert-danger d-none small mb-0" role="alert"></div>
+
+                        <div class="d-grid">
+                            <button type="submit" class="btn btn-primary" id="btnSubmit"></button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+            <div id="statusSummary" class="status-summary alert alert-primary d-none" role="alert">
+                <div class="d-flex align-items-center gap-3 flex-wrap">
+                    <div class="d-flex align-items-center gap-2">
+                        <i data-lucide="activity" class="icon-sm"></i>
+                        <span class="small-label text-uppercase">Job</span>
+                    </div>
+                    <span id="summaryStatusBadge" class="badge bg-secondary">PENDING</span>
+                    <span class="status-mini">ID: <span id="summaryJobId">-</span></span>
+                </div>
+                <div class="ms-auto text-end">
+                    <div class="fw-semibold" id="summaryProgress">0%</div>
+                    <div class="small text-muted" id="summaryMessage">Waiting for submission...</div>
+                </div>
+            </div>
+
+            <div id="statusCard" class="card shadow-sm d-none">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h5 class="card-title mb-0">Job Details</h5>
+                    <span id="statusBadge" class="badge bg-secondary">PENDING</span>
+                </div>
+                <div class="card-body">
+                    <div class="row align-items-center mb-3">
+                        <div class="col-md-8">
+                            <div class="small text-muted">Job ID: <span id="displayJobId">...</span></div>
+                            <p class="mb-2 fw-semibold" id="currentAction">Initializing...</p>
+                        </div>
+                        <div class="col-md-4 text-md-end">
+                            <div class="small text-muted">Elapsed</div>
+                            <div class="fw-semibold" id="timeElapsed">0s</div>
+                        </div>
+                    </div>
+
+                    <div class="progress mb-3" style="height: 18px;">
+                        <div id="progressBar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%">0%</div>
+                    </div>
+
+                    <div class="console-output mb-3" id="consoleOutput">
+                        <div class="text-muted">Waiting for updates...</div>
+                    </div>
+
+                    <div id="resultActions" class="d-none border-top pt-3 mt-3">
+                        <div class="alert alert-success d-flex align-items-center">
+                            <i data-lucide="check-circle" class="icon-sm me-2"></i>
+                            <div>
+                                <strong>Validation Completed!</strong>
+                                <div class="small" id="resultSummary">Differences found: 0</div>
+                            </div>
+                        </div>
+                        <div class="d-flex flex-wrap gap-2">
+                            <a id="btnDownloadReport" href="#" class="btn btn-success flex-grow-1" target="_blank">
+                                <i data-lucide="file-spreadsheet" class="icon-sm me-2"></i>Download Excel Report
+                            </a>
+                            <a id="btnJsonResult" href="#" class="btn btn-outline-secondary" target="_blank">
+                                <i data-lucide="file-json" class="icon-sm me-2"></i>View JSON
+                            </a>
+                        </div>
+                    </div>
+
+                    <div id="errorAlert" class="alert alert-danger d-none mt-3">
+                        <strong>Error:</strong> <span id="errorMessage"></span>
+                    </div>
+                </div>
+            </div>
+
+            <div id="introCard" class="card shadow-sm border-0 bg-transparent">
+                <div class="card-body text-center text-muted py-5">
+                    <i data-lucide="rocket" class="mb-3" style="width: 48px; height: 48px;"></i>
+                    <h5>Ready to Validate</h5>
+                    <p>Select a validation mode above, configure namespaces, and press Run.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://unpkg.com/lucide@0.473.0/dist/umd/lucide.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+    <script src="dashboard.js"></script>
+</body>
+</html>
