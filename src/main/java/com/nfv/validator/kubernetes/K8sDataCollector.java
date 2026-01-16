@@ -214,6 +214,12 @@ public class K8sDataCollector {
             if (specNode != null) {
                 flattenJsonNode("", specNode, flattened);
             }
+            
+            // Extract data node (for ConfigMap, Secret) - explicitly add "data" prefix
+            JsonNode dataNode = node.get("data");
+            if (dataNode != null) {
+                flattenJsonNode("data", dataNode, flattened);
+            }
         } catch (Exception e) {
             log.error("Failed to flatten spec for {}: {}", 
                     kubernetesObject.getKind(), e.getMessage());
@@ -372,5 +378,26 @@ public class K8sDataCollector {
         }
         log.info("Found {} namespaces", namespaces.size());
         return namespaces;
+    }
+
+    /**
+     * Get count of all resources in a namespace
+     * 
+     * @param namespace namespace name
+     * @return total count of resources
+     */
+    public int getResourceCount(String namespace) {
+        int count = 0;
+        try {
+            count += client.apps().deployments().inNamespace(namespace).list().getItems().size();
+            count += client.apps().statefulSets().inNamespace(namespace).list().getItems().size();
+            count += client.apps().daemonSets().inNamespace(namespace).list().getItems().size();
+            count += client.services().inNamespace(namespace).list().getItems().size();
+            count += client.configMaps().inNamespace(namespace).list().getItems().size();
+            count += client.secrets().inNamespace(namespace).list().getItems().size();
+        } catch (Exception e) {
+            log.debug("Error counting resources in namespace {}", namespace, e);
+        }
+        return count;
     }
 }

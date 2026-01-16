@@ -1,12 +1,14 @@
 package com.nfv.validator.model.api;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.nfv.validator.model.FlatNamespaceModel;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Request model for validation job submission
@@ -25,10 +27,11 @@ public class ValidationJobRequest {
     private List<String> namespaces;
     
     /**
-     * Optional baseline YAML file path (server-side file)
+     * Optional baseline YAML content (client-side content)
+     * Used when user provides YAML content directly from web UI
      */
-    @JsonProperty("baselinePath")
-    private String baselinePath;
+    @JsonProperty("baselineYamlContent")
+    private String baselineYamlContent;
     
     /**
      * Optional baseline objects (client-side preprocessed)
@@ -78,4 +81,17 @@ public class ValidationJobRequest {
      */
     @JsonProperty("exportExcel")
     private Boolean exportExcel;
+    
+    /**
+     * CNF Checklist request (transient, used internally)
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private transient Object cnfChecklistRequest;
+    
+    /**
+     * Flattened baseline model for direct comparison (internal use)
+     * Used when converting CNF checklists to avoid YAML processing
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private transient Map<String, FlatNamespaceModel> flattenedBaseline;
 }

@@ -7,10 +7,10 @@ Phiên bản này nâng cấp KValidator từ command-line tool đơn giản th�
 ## Các tính năng mới
 
 ### 1. REST API Endpoints
-- ✅ **POST /api/validate** - Submit validation job
-- ✅ **GET /api/validate/{jobId}** - Kiểm tra job status và progress
-- ✅ **GET /api/validate/{jobId}/download** - Download Excel report
-- ✅ **GET /api/validate/{jobId}/json** - Lấy JSON results cho web UI
+- ✅ **POST /kvalidator/api/validate** - Submit validation job
+- ✅ **GET /kvalidator/api/validate/{jobId}** - Kiểm tra job status và progress
+- ✅ **GET /kvalidator/api/validate/{jobId}/download** - Download Excel report
+- ✅ **GET /kvalidator/api/validate/{jobId}/json** - Lấy JSON results cho web UI
 
 ### 2. Async Job Processing
 - Jobs chạy trong background thread pool

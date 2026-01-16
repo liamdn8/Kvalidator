@@ -47,6 +47,11 @@ public class BatchExecutionResult {
     private List<RequestResult> requestResults = new ArrayList<>();
     
     /**
+     * The actual output directory where results were saved
+     */
+    private String actualOutputDirectory;
+    
+    /**
      * Add a request result
      */
     public void addRequestResult(RequestResult result) {
@@ -81,6 +86,11 @@ public class BatchExecutionResult {
          * Request name
          */
         private String requestName;
+        
+        /**
+         * Individual job ID for this validation request
+         */
+        private String jobId;
         
         /**
          * Whether the request executed successfully

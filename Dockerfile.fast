@@ -1,0 +1,38 @@
+# Fast Dockerfile - Build artifacts before using this
+# Usage: 
+#   1. mvn clean package -DskipTests
+#   2. docker build -f Dockerfile.fast -t kvalidator:test .
+
+FROM eclipse-temurin:11-jre-alpine
+
+WORKDIR /app
+
+# Install curl for healthcheck
+RUN apk add --no-cache curl
+
+# Create user and group with UID/GID 1000
+RUN addgroup -g 1000 kvalidator && \
+    adduser -D -u 1000 -G kvalidator kvalidator
+
+# Copy pre-built Quarkus app
+COPY target/quarkus-app/ ./
+
+# Copy validation config (can be overridden by ConfigMap in k8s)
+COPY src/main/resources/validation-config.yaml ./config/validation-config.yaml
+
+# Create directory for results with proper permissions
+RUN mkdir -p /tmp/.kvalidator/results && \
+    chown -R kvalidator:kvalidator /app /tmp/.kvalidator
+
+# Switch to non-root user
+USER kvalidator
+
+# Expose port
+EXPOSE 8080
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8080/q/health || exit 1
+
+# Run the application
+CMD ["java", "-jar", "quarkus-run.jar"]

@@ -1,0 +1,127 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kvalidator
+  labels:
+    app: kvalidator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kvalidator
+  template:
+    metadata:
+      labels:
+        app: kvalidator
+    spec:
+      containers:
+      - name: kvalidator
+        image: kvalidator:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: http
+        env:
+        - name: JAVA_OPTS
+          value: "-Xmx512m -Xms256m"
+        - name: QUARKUS_HTTP_PORT
+          value: "8080"
+        - name: QUARKUS_HTTP_HOST
+          value: "0.0.0.0"
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "500m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        livenessProbe:
+          httpGet:
+            path: /q/health/live
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 3
+          failureThreshold: 3
+        readinessProbe:
+          httpGet:
+            path: /q/health/ready
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 3
+        volumeMounts:
+        - name: results
+          mountPath: /tmp/.kvalidator/results
+        - name: config
+          mountPath: /app/config
+          readOnly: true
+        - name: kubeconfig
+          mountPath: /root/.kube
+          readOnly: true
+      volumes:
+      - name: results
+        emptyDir: {}
+      - name: config
+        configMap:
+          name: kvalidator-config
+      - name: kubeconfig
+        secret:
+          secretName: kvalidator-kubeconfig
+          optional: true
+      serviceAccountName: kvalidator
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kvalidator
+  labels:
+    app: kvalidator
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 8080
+    protocol: TCP
+    name: http
+  selector:
+    app: kvalidator
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kvalidator
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kvalidator-role
+rules:
+- apiGroups: [""]
+  resources:
+  - namespaces
+  - pods
+  - services
+  - configmaps
+  - secrets
+  verbs: ["get", "list"]
+- apiGroups: ["apps"]
+  resources:
+  - deployments
+  - statefulsets
+  - daemonsets
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kvalidator-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kvalidator-role
+subjects:
+- kind: ServiceAccount
+  name: kvalidator
+  namespace: default

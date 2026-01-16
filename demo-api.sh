@@ -5,7 +5,7 @@
 
 set -e
 
-BASE_URL="http://localhost:8080/api/validate"
+BASE_URL="http://localhost:8080/kvalidator/api/validate"
 
 echo "╔══════════════════════════════════════════════════════════════════╗"
 echo "║         KValidator REST API Demo                                 ║"
@@ -14,7 +14,7 @@ echo ""
 
 # Check if server is running
 echo "🔍 Checking if API server is running..."
-if ! curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/openapi | grep -q "200"; then
+if ! curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/kvalidator/api/openapi | grep -q "200"; then
     echo "❌ Error: API server is not running!"
     echo "   Please start the server with: mvn quarkus:dev"
     exit 1
@@ -160,6 +160,6 @@ echo "  3. GET    $BASE_URL/$JOB_ID/download"
 echo "  4. GET    $BASE_URL/$JOB_ID/json"
 echo ""
 echo "Next steps:"
-echo "  - View Swagger UI: http://localhost:8080/swagger-ui"
+echo "  - View Swagger UI: http://localhost:8080/kvalidator/api/swagger-ui"
 echo "  - Check results directory: /tmp/.kvalidator/results/$JOB_ID"
 echo ""

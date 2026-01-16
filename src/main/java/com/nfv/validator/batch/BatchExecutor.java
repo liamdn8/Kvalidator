@@ -65,6 +65,7 @@ public class BatchExecutor {
         BatchExecutionResult result = new BatchExecutionResult();
         result.setStartTime(LocalDateTime.now());
         result.setTotalRequests(batchRequest.getRequests().size());
+        result.setActualOutputDirectory(actualOutputDir);
         
         // Determine execution mode
         boolean continueOnError = true;

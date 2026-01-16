@@ -76,11 +76,25 @@ public class YamlDataCollector {
             try {
                 List<Map<String, Object>> documents = parseYamlFile(file);
                 for (Map<String, Object> doc : documents) {
-                    FlatObjectModel obj = convertToFlatObject(doc);
-                    if (obj != null) {
-                        // Use only object name as key (same as K8sDataCollector)
-                        namespace.addObject(obj.getName(), obj);
-                        totalObjects++;
+                    // Check if this is a Kubernetes List object
+                    if ("List".equals(doc.get("kind")) && doc.containsKey("items")) {
+                        // Process items array
+                        List<Map<String, Object>> items = (List<Map<String, Object>>) doc.get("items");
+                        log.debug("Processing List with {} items", items.size());
+                        for (Map<String, Object> item : items) {
+                            FlatObjectModel obj = convertToFlatObject(item);
+                            if (obj != null) {
+                                namespace.addObject(obj.getName(), obj);
+                                totalObjects++;
+                            }
+                        }
+                    } else {
+                        // Process single resource
+                        FlatObjectModel obj = convertToFlatObject(doc);
+                        if (obj != null) {
+                            namespace.addObject(obj.getName(), obj);
+                            totalObjects++;
+                        }
                     }
                 }
             } catch (Exception e) {
@@ -136,16 +150,30 @@ public class YamlDataCollector {
 
     /**
      * Convert parsed YAML document to FlatObjectModel
+     * Handles both individual resources and Kubernetes List objects
      */
     @SuppressWarnings("unchecked")
     private FlatObjectModel convertToFlatObject(Map<String, Object> doc) {
-        // Must have apiVersion, kind, and metadata
-        if (!doc.containsKey("kind") || !doc.containsKey("metadata")) {
-            log.debug("Skipping document without kind or metadata");
+        // Must have kind
+        if (!doc.containsKey("kind")) {
+            log.debug("Skipping document without kind");
             return null;
         }
 
         String kind = doc.get("kind").toString();
+        
+        // Handle Kubernetes List objects specially
+        if ("List".equals(kind) && doc.containsKey("items")) {
+            log.debug("Skipping List - items will be processed separately");
+            return null;
+        }
+        
+        // Must have metadata for non-List objects
+        if (!doc.containsKey("metadata")) {
+            log.debug("Skipping document without metadata");
+            return null;
+        }
+        
         Map<String, Object> metadata = (Map<String, Object>) doc.get("metadata");
         
         if (metadata == null || !metadata.containsKey("name")) {

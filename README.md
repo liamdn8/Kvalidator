@@ -12,10 +12,10 @@ KValidator now supports REST API for web-based validation!
 mvn quarkus:dev
 
 # Open Swagger UI
-http://localhost:8080/swagger-ui
+http://localhost:8080/kvalidator/api/swagger-ui
 
 # Submit validation via API
-curl -X POST http://localhost:8080/api/validate \
+curl -X POST http://localhost:8080/kvalidator/api/validate \
   -H "Content-Type: application/json" \
   -d '{"namespaces":["default","kube-system"]}'
 ```

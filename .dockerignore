@@ -1,0 +1,13 @@
+**/node_modules
+**/dist
+# **/target - Don't ignore for Dockerfile.fast
+**/.git
+**/.gitignore
+**/README.md
+**/backend-log.log
+**/logs
+**/results
+**/.vscode
+**/.idea
+**/*.iml
+**/nohup.out

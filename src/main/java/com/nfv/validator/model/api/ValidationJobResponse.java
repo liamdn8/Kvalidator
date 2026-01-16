@@ -88,4 +88,23 @@ public class ValidationJobResponse {
      */
     @JsonProperty("objectsCompared")
     private Integer objectsCompared;
+    
+    /**
+     * Validation name/description (optional)
+     */
+    @JsonProperty("validationName")
+    private String validationName;
+    
+    /**
+     * CNF Checklist baseline data (transient, not serialized to JSON)
+     * Map of namespace name to FlatNamespaceModel
+     */
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private transient java.util.Map<String, com.nfv.validator.model.FlatNamespaceModel> cnfChecklistBaseline;
+    
+    /**
+     * List of individual job IDs for batch jobs (batch processing)
+     */
+    @JsonProperty("individualJobIds")
+    private java.util.List<String> individualJobIds;
 }

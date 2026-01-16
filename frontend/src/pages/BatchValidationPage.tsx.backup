@@ -1,0 +1,512 @@
+import { useState, useEffect } from 'react';
+import { Button, Card, Table, Space, Modal, Input, Typography, App as AntApp, Tag, Tabs, Spin, Progress, Statistic, Row, Col } from 'antd';
+import { Plus, PlayCircle, Trash2, CheckCircle, XCircle, Clock, BarChart } from 'lucide-react';
+import { NamespaceSearch } from '../components/NamespaceSearch';
+import { ValidationResults } from '../components/ValidationResults';
+import { validationApi } from '../services/api';
+import type { ClusterNamespace, BatchValidationRequestItem, ValidationJobResponse, ValidationResultJson, BatchJobResult } from '../types';
+
+const { Title, Text } = Typography;
+
+export const BatchValidationPage = () => {
+  const { message } = AntApp.useApp();
+  const [items, setItems] = useState<BatchValidationRequestItem[]>([]);
+  const [isModalVisible, setIsModalVisible] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [jobStatus, setJobStatus] = useState<ValidationJobResponse | null>(null);
+  const [individualJobs, setIndividualJobs] = useState<Map<string, { status: ValidationJobResponse, result?: ValidationResultJson }>>(new Map());
+  const [activeTab, setActiveTab] = useState<string>('0');
+
+  // New Item State
+  const [newItemName, setNewItemName] = useState('');
+  const [newItemNamespaces, setNewItemNamespaces] = useState<ClusterNamespace[]>([]);
+
+  const handleAddItem = () => {
+    if (!newItemName.trim()) {
+      message.error('Please enter a name for this validation item');
+      return;
+    }
+    if (newItemNamespaces.length < 2) {
+      message.error('Please select at least 2 namespaces');
+      return;
+    }
+
+    setItems([
+      ...items,
+      {
+        name: newItemName,
+        namespaces: newItemNamespaces.map(ns => `${ns.cluster}/${ns.namespace}`),
+        verbose: false
+      }
+    ]);
+    
+    // Reset and close
+    setNewItemName('');
+    setNewItemNamespaces([]);
+    setIsModalVisible(false);
+    message.success('Added batch item');
+  };
+
+  const handleDeleteItem = (index: number) => {
+    const newItems = [...items];
+    newItems.splice(index, 1);
+    setItems(newItems);
+  };
+
+  const pollIndividualJobs = async (batchJobId: string, count: number) => {
+    const jobIds: string[] = [];
+    for (let i = 1; i <= count; i++) {
+      jobIds.push(`${batchJobId}-${i}`);
+    }
+
+    // Poll each individual job
+    const pollInterval = setInterval(async () => {
+      const updates = new Map(individualJobs);
+      let allCompleted = true;
+      let hasNewCompletion = false;
+
+      for (const individualJobId of jobIds) {
+        try {
+          const status = await validationApi.getJobStatus(individualJobId);
+          
+          // Check if this job just completed
+          const prevData = individualJobs.get(individualJobId);
+          const wasNotCompleted = !prevData || (prevData.status.status !== 'COMPLETED' && prevData.status.status !== 'FAILED');
+          const isNowCompleted = status.status === 'COMPLETED' || status.status === 'FAILED';
+          
+          if (wasNotCompleted && isNowCompleted) {
+            hasNewCompletion = true;
+          }
+
+          let result: ValidationResultJson | undefined;
+          if (status.status === 'COMPLETED' && (!prevData || !prevData.result)) {
+            try {
+              result = await validationApi.getValidationResults(individualJobId);
+              message.success(`Validation "${items[jobIds.indexOf(individualJobId)]?.name}" completed`);
+            } catch (e) {
+              console.error(`Failed to fetch results for ${individualJobId}`, e);
+            }
+          } else if (prevData?.result) {
+            result = prevData.result;
+          }
+
+          updates.set(individualJobId, { status, result });
+
+          if (status.status === 'PENDING' || status.status === 'PROCESSING') {
+            allCompleted = false;
+          }
+        } catch (error) {
+          console.error(`Error polling job ${individualJobId}`, error);
+        }
+      }
+
+      setIndividualJobs(updates);
+
+      if (allCompleted) {
+        clearInterval(pollInterval);
+        setLoading(false);
+        message.success('All batch validations completed!');
+      }
+    }, 2000);
+  };
+
+  const handleRunBatch = async () => {
+    if (items.length === 0) {
+      message.error('No items to validate');
+      return;
+    }
+
+    setLoading(true);
+    setIndividualJobs(new Map());
+    setActiveTab('0');
+    
+    try {
+      const response = await validationApi.submitBatchValidation({
+        requests: items,
+        globalSettings: { parallel: true }
+      });
+      
+      setJobStatus(response);
+      message.success(`Batch job started: ${response.jobId}`);
+      
+      // Start polling batch job status
+      const completedJob = await validationApi.pollJobStatus(
+        response.jobId,
+        (job) => {
+          setJobStatus(job);
+        }
+      );
+
+      setJobStatus(completedJob);
+      
+      // Now poll individual jobs
+      pollIndividualJobs(response.jobId, items.length);
+      
+    } catch (error) {
+      console.error(error);
+      message.error('Failed to start batch validation');
+      setLoading(false);
+    }
+  };
+
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case 'COMPLETED':
+        return <CheckCircle size={16} color="#52c41a" />;
+      case 'FAILED':
+        return <XCircle size={16} color="#ff4d4f" />;
+      case 'PROCESSING':
+        return <Spin size="small" />;
+      default:
+        return <Clock size={16} color="#999" />;
+    }
+  };
+
+  const columns = [
+    {
+      title: 'Name',
+      dataIndex: 'name',
+      key: 'name',
+    },
+    {
+      title: 'Namespaces',
+      dataIndex: 'namespaces',
+      key: 'namespaces',
+      render: (namespaces: string[]) => (
+        <>
+          {namespaces.map(ns => (
+            <Tag key={ns}>{ns}</Tag>
+          ))}
+        </>
+      ),
+    },
+    {
+      title: 'Action',
+      key: 'action',
+      render: (_: any, __: any, index: number) => (
+        <Button 
+          type="text" 
+          danger 
+          icon={<Trash2 size={16} />} 
+          onClick={() => handleDeleteItem(index)}
+          disabled={loading}
+        />
+      ),
+    },
+  ];
+
+  // Calculate overview stats
+  const getOverviewStats = () => {
+    let completed = 0;
+    let failed = 0;
+    let processing = 0;
+    let totalObjects = 0;
+    let totalDifferences = 0;
+
+    individualJobs.forEach((jobData) => {
+      if (jobData.status.status === 'COMPLETED') {
+        completed++;
+        if (jobData.result?.summary) {
+          totalObjects += jobData.result.summary.totalObjects || 0;
+          totalDifferences += jobData.result.summary.totalDifferences || 0;
+        }
+      } else if (jobData.status.status === 'FAILED') {
+        failed++;
+      } else if (jobData.status.status === 'PROCESSING') {
+        processing++;
+      }
+    });
+
+    return { completed, failed, processing, pending: items.length - completed - failed - processing, totalObjects, totalDifferences };
+  };
+
+  const stats = getOverviewStats();
+
+  // Create tabs for results
+  const resultTabs = [
+    // Overview tab
+    {
+      key: 'overview',
+      label: (
+        <Space>
+          <BarChart size={16} />
+          <strong>Overview</strong>
+        </Space>
+      ),
+      children: (
+        <Card>
+          <Title level={4}>Batch Validation Summary</Title>
+          <Row gutter={16} style={{ marginTop: 24 }}>
+            <Col span={6}>
+              <Card>
+                <Statistic 
+                  title="Total Validations" 
+                  value={items.length}
+                  valueStyle={{ color: '#1890ff' }}
+                />
+              </Card>
+            </Col>
+            <Col span={6}>
+              <Card>
+                <Statistic 
+                  title="Completed" 
+                  value={stats.completed}
+                  valueStyle={{ color: '#52c41a' }}
+                  suffix={`/ ${items.length}`}
+                />
+              </Card>
+            </Col>
+            <Col span={6}>
+              <Card>
+                <Statistic 
+                  title="Failed" 
+                  value={stats.failed}
+                  valueStyle={{ color: stats.failed > 0 ? '#ff4d4f' : '#999' }}
+                />
+              </Card>
+            </Col>
+            <Col span={6}>
+              <Card>
+                <Statistic 
+                  title="Processing" 
+                  value={stats.processing}
+                  valueStyle={{ color: '#faad14' }}
+                />
+              </Card>
+            </Col>
+          </Row>
+
+          {stats.completed > 0 && (
+            <>
+              <Title level={5} style={{ marginTop: 32 }}>Aggregated Results</Title>
+              <Row gutter={16} style={{ marginTop: 16 }}>
+                <Col span={12}>
+                  <Card>
+                    <Statistic 
+                      title="Total Objects Compared" 
+                      value={stats.totalObjects}
+                    />
+                  </Card>
+                </Col>
+                <Col span={12}>
+                  <Card>
+                    <Statistic 
+                      title="Total Differences Found" 
+                      value={stats.totalDifferences}
+                      valueStyle={{ color: stats.totalDifferences > 0 ? '#ff4d4f' : '#52c41a' }}
+                    />
+                  </Card>
+                </Col>
+              </Row>
+            </>
+          )}
+
+          <Title level={5} style={{ marginTop: 32 }}>Validation Items</Title>
+          <Table 
+            dataSource={items.map((item, index) => {
+              const jobId = jobStatus ? `${jobStatus.jobId}-${index + 1}` : '';
+              const jobData = individualJobs.get(jobId);
+              return {
+                key: index,
+                name: item.name,
+                status: jobData?.status.status || 'PENDING',
+                objects: jobData?.result?.summary?.totalObjects || '-',
+                differences: jobData?.result?.summary?.totalDifferences || '-',
+              };
+            })}
+            columns={[
+              { title: 'Name', dataIndex: 'name', key: 'name' },
+              { 
+                title: 'Status', 
+                dataIndex: 'status', 
+                key: 'status',
+                render: (status: string) => (
+                  <Tag color={
+                    status === 'COMPLETED' ? 'success' : 
+                    status === 'FAILED' ? 'error' : 
+                    status === 'PROCESSING' ? 'processing' : 'default'
+                  }>
+                    {status}
+                  </Tag>
+                )
+              },
+              { title: 'Objects', dataIndex: 'objects', key: 'objects' },
+              { title: 'Differences', dataIndex: 'differences', key: 'differences' },
+            ]}
+            pagination={false}
+            size="small"
+          />
+        </Card>
+      ),
+    },
+    // Individual validation tabs
+    ...items.map((item, index) => {
+      const jobId = jobStatus ? `${jobStatus.jobId}-${index + 1}` : '';
+      const jobData = individualJobs.get(jobId);
+      
+      return {
+        key: String(index),
+        label: (
+          <Space>
+            {jobData && getStatusIcon(jobData.status.status)}
+            {item.name}
+          </Space>
+        ),
+        children: jobData ? (
+          jobData.status.status === 'COMPLETED' && jobData.result ? (
+            <ValidationResults result={jobData.result} />
+          ) : jobData.status.status === 'FAILED' ? (
+            <Card>
+              <div style={{ textAlign: 'center', padding: 40 }}>
+                <XCircle size={48} color="#ff4d4f" />
+                <h3>Validation Failed</h3>
+                <Text type="danger">{jobData.status.message || 'Unknown error'}</Text>
+              </div>
+            </Card>
+          ) : (
+            <Card>
+              <div style={{ textAlign: 'center', padding: 40 }}>
+                <Spin size="large" />
+                <h3>Processing...</h3>
+                <Text type="secondary">Job ID: {jobId}</Text>
+                {jobData.status.progress && (
+                  <>
+                    <Progress 
+                      percent={Math.round(jobData.status.progress.percentage)} 
+                      status="active"
+                      style={{ marginTop: 16, maxWidth: 400, margin: '16px auto' }}
+                    />
+                    <Text type="secondary">{jobData.status.progress.currentStep}</Text>
+                  </>
+                )}
+              </div>
+            </Card>
+          )
+        ) : (
+          <Card>
+            <div style={{ textAlign: 'center', padding: 40 }}>
+              <Text type="secondary">Waiting to start...</Text>
+            </div>
+          </Card>
+        ),
+      };
+    })
+  ];
+
+  return (
+    <div style={{ padding: '24px', maxWidth: 1200, margin: '0 auto', width: '100%' }}>
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Title level={2} style={{ margin: 0 }}>Batch Validation</Title>
+          <Space>
+            <Button 
+              icon={<Plus size={16} />} 
+              onClick={() => setIsModalVisible(true)}
+              disabled={loading}
+            >
+              Add Comparison
+            </Button>
+            <Button 
+              type="primary" 
+              icon={<PlayCircle size={16} />} 
+              onClick={handleRunBatch}
+              loading={loading}
+              disabled={items.length === 0}
+            >
+              Run Batch
+            </Button>
+          </Space>
+        </div>
+
+        {items.length === 0 ? (
+          <Card style={{ textAlign: 'center', padding: '40px' }}>
+             <p>No validation items added. Click "Add Comparison" to start.</p>
+          </Card>
+        ) : (
+          <>
+            <Card title="Batch Items">
+              <Table 
+                dataSource={items} 
+                columns={columns} 
+                rowKey="name" 
+                pagination={false} 
+              />
+            </Card>
+
+            {jobStatus && (
+              <Card title="Batch Execution Status">
+                <Space direction="vertical" style={{ width: '100%' }}>
+                  <div>
+                    <Text strong>Batch Job ID:</Text> <Text code>{jobStatus.jobId}</Text>
+                  </div>
+                  <div>
+                    <Text strong>Status:</Text> <Tag color={jobStatus.status === 'COMPLETED' ? 'success' : jobStatus.status === 'FAILED' ? 'error' : 'processing'}>{jobStatus.status}</Tag>
+                  </div>
+                  {jobStatus.progress && (
+                    <Progress percent={Math.round(jobStatus.progress.percentage)} status="active" />
+                  )}
+                </Space>
+              </Card>
+            )}
+
+            {individualJobs.size > 0 && (
+              <div style={{ display: 'flex', gap: '16px', alignItems: 'flex-start' }}>
+                {/* Fixed sidebar for tabs */}
+                <div style={{ 
+                  width: '250px', 
+                  position: 'sticky', 
+                  top: '24px',
+                  flexShrink: 0
+                }}>
+                  <Card title="Validations" size="small">
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                      <Button
+                        type={activeTab === 'overview' ? 'primary' : 'default'}
+                        onClick={() => setActiveTab('overview')}
+                        icon={<BarChart size={16} />}
+                        block
+                      >
+                        Overview
+                      </Button>
+                      {items.map((item, index) => {
+                        const jobId = jobStatus ? `${jobStatus.jobId}-${index + 1}` : '';
+                        const jobData = individualJobs.get(jobId);
+                        return (
+                          <Button
+                            key={index}
+                            type={activeTab === String(index) ? 'primary' : 'default'}
+                            onClick={() => setActiveTab(String(index))}
+                            block
+                            style={{ 
+                              textAlign: 'left',
+                              height: 'auto',
+                              padding: '8px 12px',
+                              whiteSpace: 'normal',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px'
+                            }}
+                          >
+                            <span style={{ flexShrink: 0 }}>
+                              {jobData && getStatusIcon(jobData.status.status)}
+                            </span>
+                            <span style={{ flex: 1, wordBreak: 'break-word' }}>
+                              {item.name}
+                            </span>
+                          </Button>
+                        );
+                      })}
+                    </div>
+                  </Card>
+                </div>
+
+                {/* Scrollable content area */}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  {resultTabs.find(tab => tab.key === activeTab)?.children}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+

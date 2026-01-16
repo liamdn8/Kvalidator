@@ -4,9 +4,12 @@ import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.ConfigBuilder;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
 import io.fabric8.kubernetes.client.KubernetesClient;
+import io.fabric8.kubernetes.client.internal.KubeConfigUtils;
+import io.fabric8.kubernetes.api.model.NamedContext;
 import lombok.extern.slf4j.Slf4j;
 
 import javax.enterprise.context.ApplicationScoped;
+import java.io.File;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -40,27 +43,73 @@ public class KubernetesClusterManager {
     }
     
     /**
-     * Get client for a specific cluster name
-     * Returns default client if cluster name is "current" or not found
+     * Get client for a specific cluster name/context
+     * If clusterName is "current" or null, returns default client
+     * Otherwise, attempts to load the specified context from kubeconfig
+     * 
+     * NOTE: The vimName in CNF Checklist JSON must match a context name in your kubeconfig.
+     * Use 'kubectl config get-contexts' to see available contexts.
      */
     public KubernetesClient getClient(String clusterName) {
         if (clusterName == null || clusterName.equals("current")) {
             return getDefaultClient();
         }
         
-        return clients.computeIfAbsent(clusterName, name -> {
+        return clients.computeIfAbsent(clusterName, contextName -> {
             try {
-                // Try to load from kubeconfig with specific context
-                // Note: This attempts to use the context name, may fall back to default
-                Config config = Config.autoConfigure(name);
+                // Load kubeconfig and find the specified context
+                File kubeConfigFile = getKubeConfigFile();
+                io.fabric8.kubernetes.api.model.Config kubeConfig = KubeConfigUtils.parseConfig(kubeConfigFile);
+                
+                // Check if the context exists in kubeconfig
+                NamedContext namedContext = null;
+                for (NamedContext ctx : kubeConfig.getContexts()) {
+                    if (ctx.getName().equals(contextName)) {
+                        namedContext = ctx;
+                        break;
+                    }
+                }
+                
+                if (namedContext == null) {
+                    // List available contexts to help user
+                    java.util.List<String> availableContexts = new java.util.ArrayList<>();
+                    for (NamedContext ctx : kubeConfig.getContexts()) {
+                        availableContexts.add(ctx.getName());
+                    }
+                    
+                    log.error("❌ Context '{}' not found in kubeconfig!", contextName);
+                    log.error("Available contexts: {}", availableContexts);
+                    log.warn("⚠️  Falling back to default context. Please ensure vimName matches a context name in kubeconfig.");
+                    return getDefaultClient();
+                }
+                
+                // Build config with the specific context
+                Config config = Config.autoConfigure(contextName);
+                config.setConnectionTimeout(10000);
+                config.setRequestTimeout(30000);
+                
                 KubernetesClient client = new DefaultKubernetesClient(config);
-                log.info("Created client for cluster: {}", name);
+                log.info("✓ Successfully created client for vimName/context '{}' -> cluster: {}", 
+                        contextName, namedContext.getContext().getCluster());
                 return client;
+                
             } catch (Exception e) {
-                log.warn("Failed to create client for cluster {}, using default: {}", name, e.getMessage());
+                log.error("Failed to create client for vimName/context '{}': {}", contextName, e.getMessage(), e);
+                log.warn("Falling back to default context");
                 return getDefaultClient();
             }
         });
+    }
+    
+    /**
+     * Get the kubeconfig file location
+     */
+    private File getKubeConfigFile() {
+        String kubeConfigPath = System.getenv("KUBECONFIG");
+        if (kubeConfigPath == null || kubeConfigPath.isEmpty()) {
+            kubeConfigPath = System.getProperty("user.home") + "/.kube/config";
+        }
+        return new File(kubeConfigPath);
     }
     
     /**

@@ -1,10 +1,12 @@
 package com.nfv.validator.model.batch;
 
+import com.nfv.validator.model.FlatNamespaceModel;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Represents a single validation request in a batch
@@ -40,8 +42,12 @@ public class ValidationRequest {
      */
     private String baseline;
     
-    /**
-     * Default cluster name if not specified in namespace string
+    /**     * Flattened baseline model for direct comparison (alternative to baseline file)
+     * Used when converting CNF checklists to avoid YAML file creation
+     */
+    private Map<String, FlatNamespaceModel> flattenedBaseline;
+    
+    /**     * Default cluster name if not specified in namespace string
      */
     private String defaultCluster;
     

@@ -6,7 +6,7 @@
 set -e
 
 # Configuration
-API_URL="http://localhost:8080/api/validate"
+API_URL="http://localhost:8080/kvalidator/api/validate"
 REQUEST_FILE="examples/full-cycle-test.json"
 OUTPUT_DIR="test-output"
 
@@ -23,7 +23,7 @@ if curl -s http://localhost:8080/q/health | grep -q "UP"; then
     echo "   ✅ Server is UP"
 else
     # Fallback check for OpenAPI if health check is not enabled
-    if curl -s http://localhost:8080/openapi > /dev/null; then
+    if curl -s http://localhost:8080/kvalidator/api/openapi > /dev/null; then
         echo "   ✅ Server is UP (OpenAPI accessible)"
     else
         echo "   ❌ Server is NOT reachable at localhost:8080"

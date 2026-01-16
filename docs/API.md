@@ -27,11 +27,11 @@ http://localhost:8080
 ```
 
 ### OpenAPI Documentation
-- **Swagger UI**: http://localhost:8080/swagger-ui
-- **OpenAPI Spec**: http://localhost:8080/openapi
+- **Swagger UI**: http://localhost:8080/kvalidator/api/swagger-ui
+- **OpenAPI Spec**: http://localhost:8080/kvalidator/api/openapi
 
 ### 1. Single Validation
-**Endpoint**: `POST /api/validate`
+**Endpoint**: `POST /kvalidator/api/validate`
 
 Execute a single validation comparing namespaces against a baseline or with each other.
 
@@ -73,7 +73,7 @@ Execute a single validation comparing namespaces against a baseline or with each
 ```
 
 ### 2. Batch Validation
-**Endpoint**: `POST /api/validate/batch`
+**Endpoint**: `POST /kvalidator/api/validate/batch`
 
 Execute multiple validations in one request, either sequentially or in parallel.
 

@@ -1,0 +1,30 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kvalidator-config
+  namespace: kvalidator
+  labels:
+    app: kvalidator
+data:
+  validation-config.yaml: |
+    ignoreFields:
+      - "metadata.creationTimestamp"
+      - "metadata.generation"
+      - "metadata.resourceVersion"
+      - "metadata.uid"
+      - "metadata.selfLink"
+      - "metadata.managedFields"
+      - "metadata.namespace"
+      - "metadata.annotations"
+      - "status"
+      - "spec.template.metadata.creationTimestamp"
+      - "spec.clusterIP"
+      - "spec.clusterIPs"
+      - "spec.ipFamilies"
+      - "spec.ipFamilyPolicy"
+      - "spec.template.spec.nodeName"
+      - "spec.template.spec.restartPolicy"
+      - "spec.template.spec.dnsPolicy"
+      - "spec.template.spec.schedulerName"
+      - "spec.template.spec.securityContext"
+      - "spec.template.spec.enableServiceLinks"
