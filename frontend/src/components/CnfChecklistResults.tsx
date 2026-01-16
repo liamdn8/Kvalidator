@@ -1,95 +1,115 @@
-import { useState, useEffect, useRef } from 'react';
-import { Card, Table, Tag, Statistic, Row, Col, Button, Space, Spin, Empty } from 'antd';
-import { CheckCircle, XCircle, AlertCircle, Download, BarChart3 } from 'lucide-react';
-import type { ValidationJobResponse, ValidationResultJson } from '../types';
-import { validationApi } from '../services/api';
-import { ValidationResults } from './ValidationResults';
+import React, { useEffect, useState } from 'react';
+import { useParams } from 'react-router-dom';
+import { Button, Card, Col, Row, Statistic, Table, Space, Alert, Tag, Tabs } from 'antd';
+import { DownloadOutlined, ReloadOutlined, FileTextOutlined, LoadingOutlined } from '@ant-design/icons';
 import * as XLSX from 'xlsx';
+import { CnfValidationResultJson, ValidationResultJson, ValidationJobResponse } from '../types';
+import { validationApi } from '../services/api';
 
 interface CnfChecklistResultsProps {
-  jobId: string;
+  jobId?: string;
 }
 
-export const CnfChecklistResults = ({ jobId }: CnfChecklistResultsProps) => {
-  console.log('CnfChecklistResults: Component mounted with jobId:', jobId);
-  
-  const [loading, setLoading] = useState(true);
+interface JobStatusWithResult {
+  status: ValidationJobResponse;
+  result: CnfValidationResultJson | ValidationResultJson | null;
+}
+
+export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId: propJobId }) => {
+  const { jobId: paramJobId } = useParams<{ jobId: string }>();
+  const jobId = propJobId || paramJobId!;
+
   const [batchJob, setBatchJob] = useState<ValidationJobResponse | null>(null);
-  const [individualJobs, setIndividualJobs] = useState<Map<string, { status: ValidationJobResponse, result?: ValidationResultJson }>>(new Map());
-  const [activeTab, setActiveTab] = useState<string>('overview');
-  const resultsRef = useRef<HTMLDivElement>(null);
+  const [individualJobs, setIndividualJobs] = useState<Map<string, JobStatusWithResult>>(new Map());
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => {
-    console.log('CnfChecklistResults: useEffect triggered with jobId:', jobId);
-    loadResults();
-  }, [jobId]);
-
-  const loadResults = async () => {
+  const fetchResults = async () => {
     try {
-      console.log('Loading CNF results for jobId:', jobId);
-      setLoading(true);
+      const batchStatus = await validationApi.getJobStatus(jobId);
+      setBatchJob(batchStatus);
 
-      // Get batch job status
-      const job = await validationApi.getJobStatus(jobId);
-      setBatchJob(job);
-      console.log('Batch job loaded:', job);
-      console.log('individualJobIds:', job.individualJobIds);
-
-      if (!job.individualJobIds || job.individualJobIds.length === 0) {
-        console.warn('No individual jobs found in batch job');
-        return;
-      }
-
-      // Use individual job IDs from batch job
-      const individualJobIds = job.individualJobIds;
-      console.log('Individual job IDs:', individualJobIds);
-
-      if (individualJobIds.length === 0) {
-        console.warn('No individual jobs found');
-        return;
-      }
-
-      // Fetch all results
-      const jobMap = new Map<string, { status: ValidationJobResponse, result?: ValidationResultJson }>();
-      
-      for (const id of individualJobIds) {
+      if (batchStatus.status === 'COMPLETED') {
+        const jobsMap = new Map<string, JobStatusWithResult>();
+        
         try {
-          console.log('Fetching result for job:', id);
-          const status = await validationApi.getJobStatus(id);
-          let result;
+          // Get individual jobs for this batch
+          const batchInfo = await validationApi.getBatchIndividualJobs(jobId);
+          console.log('Individual jobs for batch:', batchInfo);
           
-          if (status.status === 'COMPLETED') {
-            result = await validationApi.getValidationResults(id);
+          // Fetch results for each individual job
+          for (const individualJobId of batchInfo.individualJobs) {
+            try {
+              // Try CNF results first, then fallback to regular results
+              let result: CnfValidationResultJson | ValidationResultJson | null = null;
+              try {
+                result = await validationApi.getCnfValidationResults(individualJobId);
+                console.log('Got CNF results for job:', individualJobId);
+              } catch {
+                try {
+                  result = await validationApi.getValidationResults(individualJobId);
+                  console.log('Got standard results for job:', individualJobId);
+                } catch (err) {
+                  console.warn('No results found for job:', individualJobId, err);
+                }
+              }
+              
+              // Get individual job status
+              const individualStatus = await validationApi.getJobStatus(individualJobId);
+              jobsMap.set(individualJobId, { status: individualStatus, result });
+            } catch (err) {
+              console.error(`Failed to fetch result for individual job ${individualJobId}:`, err);
+              jobsMap.set(individualJobId, { status: batchStatus, result: null });
+            }
           }
-          
-          jobMap.set(id, { status, result });
-          console.log(`Loaded job ${id}: ${status.status}`);
-        } catch (e) {
-          console.error(`Failed to load job ${id}`, e);
+        } catch (err) {
+          console.warn('Failed to get individual jobs, treating as single job:', err);
+          // Fallback: treat as single job
+          try {
+            let result: CnfValidationResultJson | ValidationResultJson | null = null;
+            try {
+              result = await validationApi.getCnfValidationResults(jobId);
+            } catch {
+              result = await validationApi.getValidationResults(jobId);
+            }
+            jobsMap.set(jobId, { status: batchStatus, result });
+          } catch (fallbackErr) {
+            console.error(`Failed to fetch result for single job ${jobId}:`, fallbackErr);
+            jobsMap.set(jobId, { status: batchStatus, result: null });
+          }
         }
+        
+        setIndividualJobs(jobsMap);
+      } else {
+        const jobsMap = new Map();
+        jobsMap.set(jobId, { status: batchStatus, result: null });
+        setIndividualJobs(jobsMap);
       }
-
-      setIndividualJobs(jobMap);
-      
-      // Set initial active tab
-      if (jobMap.size > 0) {
-        setActiveTab('overview');
-      }
-
-    } catch (error) {
-      console.error('Failed to load CNF results:', error);
-    } finally {
-      setLoading(false);
+    } catch (err) {
+      console.error('Error fetching job results:', err);
+      setError(err instanceof Error ? err.message : 'Unknown error occurred');
     }
   };
 
-  const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'COMPLETED': return <CheckCircle size={14} color="green" />;
-      case 'FAILED': return <XCircle size={14} color="red" />;
-      case 'PROCESSING': return <AlertCircle size={14} color="orange" />;
-      default: return <AlertCircle size={14} color="gray" />;
-    }
+  useEffect(() => {
+    let mounted = true;
+    
+    const loadResults = async () => {
+      setLoading(true);
+      await fetchResults();
+      if (mounted) setLoading(false);
+    };
+
+    loadResults();
+    
+    return () => { mounted = false; };
+  }, [jobId]);
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await fetchResults();
+    setRefreshing(false);
   };
 
   const exportToExcel = () => {
@@ -103,20 +123,34 @@ export const CnfChecklistResults = ({ jobId }: CnfChecklistResultsProps) => {
       ['Completed At', batchJob?.completedAt ? new Date(batchJob.completedAt).toLocaleString() : ''],
       ['Total Jobs', individualJobs.size],
       [],
-      ['Job Name', 'Status', 'Objects', 'Differences']
+      ['Job Name', 'Status', 'Fields', 'Matches', 'Differences']
     ];
 
     individualJobs.forEach((jobData, jobId) => {
       const result = jobData.result;
-      const objectCount = result ? Object.keys(result.comparisons).reduce((sum, key) => 
-        sum + Object.keys(result.comparisons[key].objectComparisons || {}).length, 0) : 0;
-      const differences = result?.summary?.totalDifferences || 0;
+      let fieldCount = 0, matchCount = 0, diffCount = 0;
+      
+      // Handle both CNF and standard formats
+      const isCnfFormat = result && 'results' in result;
+      if (isCnfFormat) {
+        const cnfResult = result as CnfValidationResultJson;
+        fieldCount = cnfResult.summary.totalFields;
+        matchCount = cnfResult.summary.totalMatches;
+        diffCount = cnfResult.summary.totalDifferences;
+      } else if (result) {
+        const stdResult = result as ValidationResultJson;
+        fieldCount = Object.keys(stdResult.comparisons).reduce((sum, key) => 
+          sum + Object.keys(stdResult.comparisons[key].objectComparisons || {}).length, 0);
+        diffCount = stdResult.summary?.totalDifferences || 0;
+        matchCount = fieldCount - diffCount;
+      }
       
       summaryData.push([
         jobData.status.validationName || jobId,
         jobData.status.status,
-        objectCount,
-        differences
+        fieldCount,
+        matchCount,
+        diffCount
       ]);
     });
 
@@ -127,22 +161,25 @@ export const CnfChecklistResults = ({ jobId }: CnfChecklistResultsProps) => {
     individualJobs.forEach((jobData, jobIdKey) => {
       if (jobData.result) {
         const result = jobData.result;
-        const sheetData = [['Comparison', 'Object', 'Field', 'Expected', 'Actual', 'Status']];
+        const isCnfFormat = 'results' in result;
+        const sheetData = [['VIM/Namespace', 'Object', 'Field', 'Expected', 'Actual', 'Status', 'Matched Field']];
         
-        Object.entries(result.comparisons).forEach(([compKey, comparison]) => {
-          Object.entries(comparison.objectComparisons || {}).forEach(([objKey, objComp]) => {
-            objComp.items?.forEach((item) => {
+        if (isCnfFormat) {
+          const cnfResult = result as CnfValidationResultJson;
+          cnfResult.results.forEach((nsResult: any) => {
+            nsResult.items.forEach((item: any) => {
               sheetData.push([
-                compKey,
-                objKey,
-                item.key || '',
-                item.leftValue || '',
-                item.rightValue || '',
-                item.status
+                `${nsResult.vimName}/${nsResult.namespace}`,
+                item.objectName,
+                item.fieldKey,
+                item.baselineValue || '',
+                item.actualValue || '',
+                item.status,
+                item.matchedFieldKey || ''
               ]);
             });
           });
-        });
+        }
         
         const sheet = XLSX.utils.aoa_to_sheet(sheetData);
         const sheetName = (jobData.status.validationName || jobIdKey).substring(0, 31);
@@ -154,266 +191,321 @@ export const CnfChecklistResults = ({ jobId }: CnfChecklistResultsProps) => {
   };
 
   const renderOverview = () => {
-    const completedJobs = Array.from(individualJobs.values()).filter(job => job.status.status === 'COMPLETED');
-    // const failedJobs = Array.from(individualJobs.values()).filter(job => job.status.status === 'FAILED');
-    
-    const totalObjects = completedJobs.reduce((sum, job) => 
-      sum + (job.result?.summary?.totalObjects || 0), 0);
-    const totalDifferences = completedJobs.reduce((sum, job) => 
-      sum + (job.result?.summary?.totalDifferences || 0), 0);
+    let totalFields = 0;
+    let totalMatches = 0;
+    let totalDifferences = 0;
+    let completedJobs = 0;
+
+    individualJobs.forEach((jobData) => {
+      if (jobData.status.status === 'COMPLETED' && jobData.result) {
+        completedJobs++;
+        const result = jobData.result;
+        
+        // Handle CNF format only (since this is CNF checklist)
+        const isCnfFormat = 'results' in result;
+        if (isCnfFormat) {
+          const cnfResult = result as CnfValidationResultJson;
+          totalFields += cnfResult.summary.totalFields;
+          totalMatches += cnfResult.summary.totalMatches;
+          totalDifferences += cnfResult.summary.totalDifferences;
+        }
+      }
+    });
 
     return (
-      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+      <Card title="CNF Checklist Validation Overview" style={{ marginBottom: 16 }}>
         <Row gutter={16}>
-          <Col span={4}>
+          <Col span={6}>
             <Statistic title="Total Jobs" value={individualJobs.size} />
           </Col>
-          <Col span={4}>
-            <Statistic title="Completed" value={completedJobs.length} valueStyle={{ color: '#52c41a' }} />
+          <Col span={6}>
+            <Statistic title="Completed" value={completedJobs} valueStyle={{ color: '#52c41a' }} />
           </Col>
-          <Col span={4}>
-            <Statistic title="Total Objects" value={totalObjects} />
+          <Col span={6}>
+            <Statistic title="Matches" value={totalMatches} valueStyle={{ color: '#52c41a' }} />
           </Col>
-          <Col span={4}>
-            <Statistic title="Total Differences" value={totalDifferences} valueStyle={{ color: totalDifferences > 0 ? '#ff4d4f' : '#52c41a' }} />
-          </Col>
-          <Col span={4}>
-            <Statistic 
-              title="Match Rate" 
-              value={totalObjects > 0 ? (((totalObjects - totalDifferences) / totalObjects) * 100).toFixed(1) : 0}
-              suffix="%"
-              valueStyle={{ color: totalDifferences === 0 ? '#52c41a' : totalDifferences < totalObjects / 2 ? '#faad14' : '#ff4d4f' }}
-            />
+          <Col span={6}>
+            <Statistic title="Differences" value={totalDifferences} valueStyle={{ color: '#ff4d4f' }} />
           </Col>
         </Row>
-
-        <Card title="Job Details" size="small" style={{ marginBottom: 16 }}>
-          <Table
-            size="small"
-            dataSource={Array.from(individualJobs.entries()).map(([jobId, jobData]) => ({
-              key: jobId,
-              jobId,
-              name: jobData.status.validationName || jobId,
-              status: jobData.status.status,
-              objects: jobData.result ? Object.keys(jobData.result.comparisons).reduce((sum, key) => 
-                sum + Object.keys(jobData.result!.comparisons[key].objectComparisons || {}).length, 0) : 0,
-              differences: jobData.result?.summary?.totalDifferences || 0,
-            }))}
-            columns={[
-              { title: 'Job Name', dataIndex: 'name', key: 'name', width: 300 },
-              { 
-                title: 'Status', 
-                dataIndex: 'status', 
-                key: 'status',
-                width: 120,
-                render: (status: string) => (
-                  <Tag color={status === 'COMPLETED' ? 'success' : status === 'FAILED' ? 'error' : 'processing'}>
-                    {status}
-                  </Tag>
-                )
-              },
-              { title: 'Objects', dataIndex: 'objects', key: 'objects', width: 100 },
-              { 
-                title: 'Differences', 
-                dataIndex: 'differences', 
-                key: 'differences',
-                width: 120,
-                render: (diff: number) => (
-                  <span style={{ color: diff > 0 ? '#ff4d4f' : '#52c41a' }}>
-                    {diff}
-                  </span>
-                )
-              },
-              {
-                title: 'Match Rate',
-                key: 'matchRate',
-                width: 120,
-                render: (_: any, record: any) => {
-                  const rate = record.objects > 0 ? (((record.objects - record.differences) / record.objects) * 100).toFixed(1) : 0;
-                  return (
-                    <span style={{ 
-                      color: record.differences === 0 ? '#52c41a' : 
-                             record.differences < record.objects / 2 ? '#faad14' : '#ff4d4f',
-                      fontWeight: 'bold'
-                    }}>
-                      {rate}%
-                    </span>
-                  );
-                }
-              },
-            ]}
-            pagination={false}
+        
+        {totalDifferences === 0 && totalMatches > 0 && (
+          <Alert
+            message="All CNF checklist items match! Your configuration is compliant."
+            type="success"
+            showIcon
+            style={{ marginTop: 16 }}
           />
-        </Card>
-      </Space>
+        )}
+      </Card>
     );
   };
 
-  const renderIndividualResult = () => {
-    const jobIds = Array.from(individualJobs.keys());
-    const index = parseInt(activeTab);
-    if (isNaN(index) || index < 0 || index >= jobIds.length) {
-      return null;
-    }
+  const renderJobsTable = () => {
+    const columns = [
+      {
+        title: 'Job Name',
+        dataIndex: 'jobName',
+        key: 'jobName',
+        render: (_: any, record: any) => record.status.validationName || record.jobId,
+      },
+      {
+        title: 'Status',
+        dataIndex: 'status',
+        key: 'status',
+        render: (_: any, record: any) => (
+          <Tag color={record.status.status === 'COMPLETED' ? 'green' : 'default'}>
+            {record.status.status}
+          </Tag>
+        ),
+      },
+      {
+        title: 'Fields',
+        dataIndex: 'fields',
+        key: 'fields',
+        render: (_: any, record: any) => {
+          if (record.result && 'results' in record.result) {
+            return (record.result as CnfValidationResultJson).summary.totalFields;
+          }
+          return 0;
+        },
+      },
+      {
+        title: 'Matches',
+        dataIndex: 'matches',
+        key: 'matches',
+        render: (_: any, record: any) => {
+          if (record.result && 'results' in record.result) {
+            const matches = (record.result as CnfValidationResultJson).summary.totalMatches;
+            return <span style={{ color: '#52c41a' }}>{matches}</span>;
+          }
+          return 0;
+        },
+      },
+      {
+        title: 'Differences',
+        dataIndex: 'differences',
+        key: 'differences',
+        render: (_: any, record: any) => {
+          if (record.result && 'results' in record.result) {
+            const diffs = (record.result as CnfValidationResultJson).summary.totalDifferences;
+            return <span style={{ color: '#ff4d4f' }}>{diffs}</span>;
+          }
+          return 0;
+        },
+      },
+      {
+        title: 'Match Rate',
+        dataIndex: 'matchRate',
+        key: 'matchRate',
+        render: (_: any, record: any) => {
+          if (record.result && 'results' in record.result) {
+            const cnfResult = record.result as CnfValidationResultJson;
+            const fieldCount = cnfResult.summary.totalFields;
+            const matchCount = cnfResult.summary.totalMatches;
+            const rate = fieldCount > 0 ? ((matchCount / fieldCount) * 100).toFixed(1) : '0';
+            return (
+              <Tag color={cnfResult.summary.totalDifferences === 0 ? 'green' : 'red'}>
+                {rate}%
+              </Tag>
+            );
+          }
+          return <Tag color="default">0%</Tag>;
+        },
+      },
+    ];
 
-    const jobId = jobIds[index];
-    const jobData = individualJobs.get(jobId);
-
-    if (!jobData) {
-      return (
-        <div style={{ textAlign: 'center', padding: 40 }}>
-          <span>Job not found</span>
-        </div>
-      );
-    }
-
-    if (jobData.status.status === 'COMPLETED' && jobData.result) {
-      return <ValidationResults result={jobData.result} />;
-    }
-
-    if (jobData.status.status === 'FAILED') {
-      return (
-        <div style={{ textAlign: 'center', padding: 40 }}>
-          <XCircle size={48} color="#ff4d4f" />
-          <h3>Validation Failed</h3>
-          <span style={{ color: '#ff4d4f' }}>{jobData.status.message || 'Unknown error'}</span>
-        </div>
-      );
-    }
+    const dataSource = Array.from(individualJobs.entries()).map(([jobId, jobData]) => ({
+      key: jobId,
+      jobId,
+      ...jobData,
+    }));
 
     return (
-      <div style={{ textAlign: 'center', padding: 40 }}>
-        <Spin size="large" />
-        <h3>Processing...</h3>
-        <span>Job ID: {jobId}</span>
-      </div>
+      <Card title="Individual Job Results" style={{ marginBottom: 16 }}>
+        <Table 
+          columns={columns}
+          dataSource={dataSource}
+          size="small"
+        />
+      </Card>
+    );
+  };
+
+  const renderIndividualResults = () => {
+    return (
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        {Array.from(individualJobs.entries()).map(([jobId, jobData]) => {
+          if (!jobData.result || !('results' in jobData.result)) {
+            return null;
+          }
+
+          const cnfResult = jobData.result as CnfValidationResultJson;
+          
+          return (
+            <Card 
+              key={jobId}
+              title={
+                <Space>
+                  <FileTextOutlined />
+                  {jobData.status.validationName || jobId}
+                  <Tag color={cnfResult.summary.totalDifferences === 0 ? 'green' : 'red'}>
+                    {cnfResult.summary.totalMatches} matches, {cnfResult.summary.totalDifferences} differences
+                  </Tag>
+                </Space>
+              }
+            >
+              <Space direction="vertical" size="middle" style={{ width: '100%' }}>
+                {cnfResult.results.map((nsResult: any, nsIndex: number) => (
+                  <Card 
+                    key={nsIndex}
+                    size="small"
+                    title={`${nsResult.vimName} / ${nsResult.namespace}`}
+                    style={{ border: '1px solid #d9d9d9' }}
+                  >
+                    <Table
+                      size="small"
+                      columns={[
+                        { title: 'Object', dataIndex: 'objectName', key: 'objectName' },
+                        {
+                          title: 'Field',
+                          dataIndex: 'fieldKey',
+                          key: 'fieldKey',
+                          render: (fieldKey: string, record: any) => (
+                            <Space>
+                              <code style={{ fontSize: '12px', backgroundColor: '#f5f5f5', padding: '2px 4px', borderRadius: '2px' }}>
+                                {fieldKey}
+                              </code>
+                              {record.matchedFieldKey && record.matchedFieldKey !== fieldKey && (
+                                <Tag color="blue" style={{ fontSize: '10px' }}>
+                                  → {record.matchedFieldKey}
+                                </Tag>
+                              )}
+                            </Space>
+                          ),
+                        },
+                        {
+                          title: 'Expected',
+                          dataIndex: 'baselineValue',
+                          key: 'baselineValue',
+                          render: (value: string) => (
+                            <code style={{ fontSize: '12px', backgroundColor: '#e6f7ff', padding: '2px 4px', borderRadius: '2px' }}>
+                              {value || 'N/A'}
+                            </code>
+                          ),
+                        },
+                        {
+                          title: 'Actual',
+                          dataIndex: 'actualValue',
+                          key: 'actualValue',
+                          render: (value: string) => (
+                            <code style={{ fontSize: '12px', backgroundColor: '#f6ffed', padding: '2px 4px', borderRadius: '2px' }}>
+                              {value || 'N/A'}
+                            </code>
+                          ),
+                        },
+                        {
+                          title: 'Status',
+                          dataIndex: 'status',
+                          key: 'status',
+                          render: (status: string) => (
+                            <Tag color={status === 'MATCH' ? 'green' : 'red'}>
+                              {status}
+                            </Tag>
+                          ),
+                        },
+                      ]}
+                      dataSource={nsResult.items.map((item: any, idx: number) => ({ ...item, key: idx }))}
+                      pagination={false}
+                    />
+                  </Card>
+                ))}
+              </Space>
+            </Card>
+          );
+        })}
+      </Space>
     );
   };
 
   if (loading) {
     return (
-      <Card>
-        <div style={{ textAlign: 'center', padding: '60px 0' }}>
-          <Spin size="large" />
-          <p style={{ marginTop: 16 }}>Loading CNF Checklist results...</p>
-        </div>
-      </Card>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '64px' }}>
+        <Space>
+          <LoadingOutlined style={{ fontSize: 24 }} spin />
+          Loading CNF checklist results...
+        </Space>
+      </div>
     );
   }
 
-  if (individualJobs.size === 0) {
+  if (error) {
     return (
-      <Card>
-        <Empty description="No validation results found" />
-        <p>Debug info: JobId = {jobId}</p>
-      </Card>
+      <Alert
+        message="Error"
+        description={`Error loading results: ${error}`}
+        type="error"
+        showIcon
+      />
     );
   }
 
-  const jobIds = Array.from(individualJobs.keys());
+  if (!batchJob) {
+    return (
+      <Alert
+        message="Error"
+        description="Batch job not found"
+        type="error"
+        showIcon
+      />
+    );
+  }
+
+  const { TabPane } = Tabs;
 
   return (
-    <div style={{ position: 'relative' }}>
-      {/* Floating Navigation Sidebar - Right Side */}
-      <div style={{ 
-        position: 'fixed',
-        right: '24px',
-        top: '120px',
-        width: '240px',
-        maxHeight: 'calc(100vh - 160px)',
-        overflowY: 'auto',
-        zIndex: 100,
-        background: 'white',
-        borderRadius: '8px',
-        boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
-      }}>
-        <Card 
-          size="small" 
-          title="Navigation" 
-          bodyStyle={{ padding: '12px' }}
-          headStyle={{ 
-            borderBottom: '1px solid #f0f0f0',
-            padding: '12px 16px',
-            minHeight: 'auto'
-          }}
-        >
-          <Space direction="vertical" style={{ width: '100%' }} size="small">
-            <Button
-              type={activeTab === 'overview' ? 'primary' : 'text'}
-              size="small"
-              block
-              onClick={() => {
-                setActiveTab('overview');
-                setTimeout(() => {
-                  resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }, 100);
-              }}
-              icon={<BarChart3 size={14} />}
-              style={{ 
-                justifyContent: 'flex-start',
-                height: 'auto',
-                padding: '8px 12px'
-              }}
-            >
-              Overview
-            </Button>
-            {jobIds.map((jobId, index) => {
-              const jobData = individualJobs.get(jobId)!;
-              
-              return (
-                <Button
-                  key={index}
-                  type={activeTab === String(index) ? 'primary' : 'text'}
-                  size="small"
-                  block
-                  onClick={() => {
-                    setActiveTab(String(index));
-                    setTimeout(() => {
-                      resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    }, 100);
-                  }}
-                  icon={getStatusIcon(jobData.status.status)}
-                  style={{ 
-                    justifyContent: 'flex-start',
-                    height: 'auto',
-                    padding: '8px 12px'
-                  }}
-                >
-                  <div style={{ 
-                    overflow: 'hidden', 
-                    textOverflow: 'ellipsis', 
-                    whiteSpace: 'nowrap',
-                    flex: 1,
-                    textAlign: 'left',
-                    fontSize: '13px'
-                  }}>
-                    {jobData.status.validationName || `Job ${index + 1}`}
-                  </div>
-                </Button>
-              );
-            })}
-          </Space>
-        </Card>
+    <div style={{ padding: '24px' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
+        <div>
+          <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: 0 }}>CNF Checklist Results</h1>
+          <p style={{ color: '#666', margin: '4px 0' }}>Job ID: {jobId}</p>
+          {batchJob.submittedAt && (
+            <p style={{ fontSize: '12px', color: '#999', margin: 0 }}>
+              Submitted: {new Date(batchJob.submittedAt).toLocaleString()}
+            </p>
+          )}
+        </div>
+        <Space>
+          <Button 
+            icon={<ReloadOutlined spin={refreshing} />}
+            onClick={handleRefresh}
+            disabled={refreshing}
+          >
+            Refresh
+          </Button>
+          <Button 
+            type="primary"
+            icon={<DownloadOutlined />}
+            onClick={exportToExcel}
+            disabled={individualJobs.size === 0}
+          >
+            Export Excel
+          </Button>
+        </Space>
       </div>
 
-      {/* Main Content */}
-      <Card 
-        ref={resultsRef}
-        title={activeTab === 'overview' ? 'CNF Checklist Overview' : 
-               individualJobs.get(jobIds[parseInt(activeTab)])?.status.validationName || 'Validation Result'}
-        extra={activeTab === 'overview' ? (
-          <Button 
-            type="primary" 
-            icon={<Download size={16} />}
-            onClick={exportToExcel}
-          >
-            Export to Excel
-          </Button>
-        ) : null}
-        style={{ scrollMarginTop: '24px' }}
-      >
-        {activeTab === 'overview' ? renderOverview() : renderIndividualResult()}
-      </Card>
+      {renderOverview()}
+
+      <Tabs defaultActiveKey="summary">
+        <TabPane tab="Summary" key="summary">
+          {renderJobsTable()}
+        </TabPane>
+        <TabPane tab="Detailed Results" key="details">
+          {renderIndividualResults()}
+        </TabPane>
+      </Tabs>
     </div>
   );
 };
+
+export default CnfChecklistResults;

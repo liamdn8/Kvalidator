@@ -14,7 +14,8 @@ import {
   Popconfirm,
   Collapse,
   Modal,
-  Upload
+  Upload,
+  Tooltip
 } from 'antd';
 import { 
   PlayCircle, 
@@ -54,6 +55,7 @@ export const CNFChecklistPage = () => {
   const [configViewMode, setConfigViewMode] = useState<'ui' | 'yaml'>('ui');
   const [yamlConfig, setYamlConfig] = useState('');
   const [viewMode, setViewMode] = useState<'form' | 'yaml'>('form');
+  const [matchingStrategy, setMatchingStrategy] = useState<'exact' | 'value' | 'identity'>('value');
 
   // Sample JSON template
   const sampleJson = `[
@@ -62,8 +64,16 @@ export const CNFChecklistPage = () => {
     "namespace": "default",
     "kind": "Deployment",
     "objectName": "abm_01",
-    "fieldKey": "spec.template.spec.containers[0].image",vâng
+    "fieldKey": "spec.template.spec.containers[0].image",
     "manoValue": "harbor.local/vmano/webmano:1.2.3"
+  },
+  {
+    "vimName": "vim-hanoi",
+    "namespace": "default",
+    "kind": "Deployment",
+    "objectName": "abm_01",
+    "fieldKey": "spec.template.spec.containers[1].terminationMessagePath",
+    "manoValue": "/dev/termination-log"
   },
   {
     "vimName": "vim-hanoi",
@@ -334,9 +344,11 @@ ${config.ignoreFields.map(f => `  - "${f}"`).join('\n')}`;
     const request: CNFChecklistRequest = {
       items,
       description: `CNF Checklist Validation - ${new Date().toLocaleString()}`,
+      matchingStrategy: matchingStrategy,
     };
 
     console.log('CNF Checklist Request:', request);
+    console.log('Matching Strategy:', matchingStrategy);
 
     try {
       setLoading(true);
@@ -559,6 +571,48 @@ ${config.ignoreFields.map(f => `  - "${f}"`).join('\n')}`;
           </div>
 
           {inputMode === 'json' ? renderJsonInput() : renderTableInput()}
+
+          {/* Matching Strategy */}
+          <Card title="Comparison Strategy" size="small" style={{ marginBottom: 16 }}>
+            <Space direction="vertical" style={{ width: '100%' }} size="small">
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <span style={{ fontWeight: 500 }}>How to match fields:</span>
+                <Radio.Group
+                  value={matchingStrategy}
+                  onChange={(e) => setMatchingStrategy(e.target.value)}
+                  buttonStyle="solid"
+                >
+                  <Radio.Button value="exact">
+                    <Tooltip title="Exact index: containers[0] only matches containers[0] (V1 engine, fastest)">
+                      Exact Index
+                    </Tooltip>
+                  </Radio.Button>
+                  <Radio.Button value="value">
+                    <Tooltip title="Value search: containers[1] searches all items for matching value (V1 flexible)">
+                      Value Search
+                    </Tooltip>
+                  </Radio.Button>
+                  <Radio.Button value="identity">
+                    <Tooltip title="Identity match: containers[app] uses semantic/name-based matching (V2 engine)">
+                      Identity Match
+                    </Tooltip>
+                  </Radio.Button>
+                </Radio.Group>
+              </div>
+              <Alert
+                message={
+                  matchingStrategy === 'exact' 
+                    ? '📌 Exact: Fastest, strict index matching'
+                    : matchingStrategy === 'value'
+                    ? '🔍 Value: Flexible search across list items'
+                    : '🎯 Identity: Semantic comparison (order-independent)'
+                }
+                type="info"
+                showIcon={false}
+                style={{ padding: '6px 12px', fontSize: '12px' }}
+              />
+            </Space>
+          </Card>
 
           {/* Validate Button for Form/Table mode */}
           <div style={{ display: 'flex', gap: '12px', marginBottom: 16 }}>

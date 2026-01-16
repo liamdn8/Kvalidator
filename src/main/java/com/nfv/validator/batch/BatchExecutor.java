@@ -1,6 +1,8 @@
 package com.nfv.validator.batch;
 
 import com.nfv.validator.comparison.NamespaceComparator;
+import com.nfv.validator.config.FeatureFlags;
+import com.nfv.validator.service.ValidationServiceV2;
 import com.nfv.validator.config.ConfigLoader;
 import com.nfv.validator.config.ValidationConfig;
 import com.nfv.validator.kubernetes.K8sDataCollector;
@@ -223,9 +225,9 @@ public class BatchExecutor {
             
             // Execute based on type
             if ("baseline-comparison".equals(request.getType())) {
-                executeBaselineComparison(request, validationConfig, result);
+                executeBaselineComparison(request, validationConfig, result, batchRequest);
             } else {
-                executeNamespaceComparison(request, validationConfig, result);
+                executeNamespaceComparison(request, validationConfig, result, batchRequest);
             }
             
             result.setSuccess(true);
@@ -284,7 +286,8 @@ public class BatchExecutor {
      */
     private void executeBaselineComparison(ValidationRequest request,
                                           ValidationConfig validationConfig,
-                                          BatchExecutionResult.RequestResult result) throws Exception {
+                                          BatchExecutionResult.RequestResult result,
+                                          BatchValidationRequest batchRequest) throws Exception {
         
         System.out.println("📂 Loading baseline from: " + request.getBaseline());
         
@@ -306,7 +309,7 @@ public class BatchExecutor {
         }
         
         // Perform comparisons and generate report
-        performComparisonsAndGenerateReport(namespaceModels, validationConfig, request, result);
+        performComparisonsAndGenerateReport(namespaceModels, validationConfig, request, result, batchRequest);
     }
     
     /**
@@ -314,7 +317,8 @@ public class BatchExecutor {
      */
     private void executeNamespaceComparison(ValidationRequest request,
                                            ValidationConfig validationConfig,
-                                           BatchExecutionResult.RequestResult result) throws Exception {
+                                           BatchExecutionResult.RequestResult result,
+                                           BatchValidationRequest batchRequest) throws Exception {
         
         // Collect from all namespaces
         List<FlatNamespaceModel> namespaceModels = new ArrayList<>();
@@ -325,7 +329,7 @@ public class BatchExecutor {
         }
         
         // Perform comparisons and generate report
-        performComparisonsAndGenerateReport(namespaceModels, validationConfig, request, result);
+        performComparisonsAndGenerateReport(namespaceModels, validationConfig, request, result, batchRequest);
     }
     
     /**
@@ -366,7 +370,8 @@ public class BatchExecutor {
     private void performComparisonsAndGenerateReport(List<FlatNamespaceModel> namespaceModels,
                                                      ValidationConfig validationConfig,
                                                      ValidationRequest request,
-                                                     BatchExecutionResult.RequestResult result) throws Exception {
+                                                     BatchExecutionResult.RequestResult result,
+                                                     BatchValidationRequest batchRequest) throws Exception {
         
         System.out.println();
         System.out.println("🔍 Performing comparisons...");
@@ -376,6 +381,11 @@ public class BatchExecutor {
         int totalDifferences = 0;
         int totalObjects = 0;
         
+        // Check if V2 semantic comparison is enabled via batch settings
+        boolean useSemanticV2 = batchRequest != null && 
+                                batchRequest.getSettings() != null && 
+                                batchRequest.getSettings().isUseSemanticV2();
+        
         for (int i = 0; i < namespaceModels.size() - 1; i++) {
             for (int j = i + 1; j < namespaceModels.size(); j++) {
                 FlatNamespaceModel left = namespaceModels.get(i);
@@ -384,12 +394,23 @@ public class BatchExecutor {
                 String compKey = left.getClusterName() + "/" + left.getName() + 
                                "_vs_" + right.getClusterName() + "/" + right.getName();
                 
-                NamespaceComparison comparison = NamespaceComparator.compareNamespace(
-                        left.getObjects(), right.getObjects(),
-                        left.getClusterName() + "/" + left.getName(),
-                        right.getClusterName() + "/" + right.getName(),
-                        validationConfig
-                );
+                NamespaceComparison comparison;
+                if (useSemanticV2) {
+                    log.info("[V2] Using semantic comparison for batch: {}", compKey);
+                    comparison = ValidationServiceV2.compareFlat(
+                            left, right,
+                            left.getClusterName() + "/" + left.getName(),
+                            right.getClusterName() + "/" + right.getName(),
+                            validationConfig
+                    );
+                } else {
+                    comparison = NamespaceComparator.compareNamespace(
+                            left.getObjects(), right.getObjects(),
+                            left.getClusterName() + "/" + left.getName(),
+                            right.getClusterName() + "/" + right.getName(),
+                            validationConfig
+                    );
+                }
                 
                 comparisons.put(compKey, comparison);
                 

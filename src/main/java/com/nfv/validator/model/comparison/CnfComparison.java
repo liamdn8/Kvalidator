@@ -78,6 +78,13 @@ public class CnfComparison {
         private String fieldKey;
         
         /**
+         * Actual field key that was matched in runtime (may differ due to index remapping with flexible matching)
+         * Example: baseline requests containers[0].env[1].name but actual has it at containers[0].env[0].name
+         */
+        @JsonProperty("matchedFieldKey")
+        private String matchedFieldKey;
+        
+        /**
          * Expected value from baseline/checklist (MANO value)
          */
         @JsonProperty("baselineValue")

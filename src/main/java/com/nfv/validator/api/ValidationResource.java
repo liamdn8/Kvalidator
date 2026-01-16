@@ -21,6 +21,7 @@ import javax.ws.rs.*;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.Response;
 import java.io.*;
+import java.nio.file.Files;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -376,9 +377,11 @@ public class ValidationResource {
         }
         
         try {
-            // Read and return JSON file
-            ValidationResultJson results = objectMapper.readValue(jsonFile, ValidationResultJson.class);
-            return Response.ok(results).build();
+            // Read and return JSON file as-is (supports both CNF and standard formats)
+            String jsonContent = Files.readString(jsonFile.toPath());
+            return Response.ok(jsonContent)
+                    .type("application/json")
+                    .build();
             
         } catch (Exception e) {
             log.error("Failed to read JSON results file", e);

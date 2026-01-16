@@ -4,9 +4,11 @@ import com.nfv.validator.batch.BatchExecutor;
 import com.nfv.validator.batch.BatchSummaryReportGenerator;
 import com.nfv.validator.comparison.NamespaceComparator;
 import com.nfv.validator.config.ConfigLoader;
+import com.nfv.validator.config.FeatureFlags;
 import com.nfv.validator.config.ValidationConfig;
 import com.nfv.validator.kubernetes.K8sDataCollector;
 import com.nfv.validator.kubernetes.KubernetesClusterManager;
+import com.nfv.validator.service.ValidationServiceV2;
 import com.nfv.validator.model.FlatNamespaceModel;
 import com.nfv.validator.model.FlatObjectModel;
 import com.nfv.validator.model.api.*;
@@ -163,6 +165,15 @@ public class AsyncValidationExecutor {
                 
                 // Convert batch ValidationRequest to ValidationJobRequest
                 ValidationJobRequest jobRequest = convertBatchRequestToJobRequest(batchValidationRequest);
+                
+                // Preserve CNF checklist request from batch
+                log.info("DEBUG: batchRequest.getCnfChecklistRequest() = {}", batchRequest.getCnfChecklistRequest());
+                if (batchRequest.getCnfChecklistRequest() != null) {
+                    jobRequest.setCnfChecklistRequest(batchRequest.getCnfChecklistRequest());
+                    log.info("Set CNF checklist request in job: {}", jobRequest.getCnfChecklistRequest().getClass().getSimpleName());
+                } else {
+                    log.warn("CNF checklist request is NULL in batchRequest!");
+                }
                 
                 // Create individual job using our batch-based ID scheme
                 ValidationJobResponse individualJob = jobService.createJobWithId(individualJobId, jobRequest);
@@ -490,10 +501,21 @@ public class AsyncValidationExecutor {
                              baselineModel.getObjects().size(), ns.getName(), ns.getObjects().size());
                     
                     String comparisonKey = buildComparisonKey(baselineModel, ns);
-                    NamespaceComparison comparison = NamespaceComparator.compareNamespace(
-                            baselineModel.getObjects(), ns.getObjects(),
-                            baselineModel.getName(), ns.getName(),
-                            validationConfig);
+                    NamespaceComparison comparison;
+                    if (FeatureFlags.getInstance().isUseSemanticComparison()) {
+                        log.info("[V2] Using semantic comparison for {}", comparisonKey);
+                        comparison = ValidationServiceV2.compareFlat(
+                                baselineModel, ns,
+                                baselineModel.getClusterName() + "/" + baselineModel.getName(),
+                                ns.getClusterName() + "/" + ns.getName(),
+                                validationConfig);
+                    } else {
+                        comparison = NamespaceComparator.compareNamespace(
+                                baselineModel.getObjects(), ns.getObjects(),
+                                baselineModel.getClusterName() + "/" + baselineModel.getName(),
+                                ns.getClusterName() + "/" + ns.getName(),
+                                validationConfig);
+                    }
                     
                     comparisons.put(comparisonKey, comparison);
                     totalDifferences += comparison.getSummary().getDifferencesCount();
@@ -510,10 +532,21 @@ public class AsyncValidationExecutor {
                 FlatNamespaceModel ns = namespaceModels.get(i);
                 
                 String comparisonKey = buildComparisonKey(firstNamespace, ns);
-                NamespaceComparison comparison = NamespaceComparator.compareNamespace(
-                        firstNamespace.getObjects(), ns.getObjects(),
-                        firstNamespace.getName(), ns.getName(),
-                        validationConfig);
+                NamespaceComparison comparison;
+                if (FeatureFlags.getInstance().isUseSemanticComparison()) {
+                    log.info("[V2] Using semantic comparison for {}", comparisonKey);
+                    comparison = ValidationServiceV2.compareFlat(
+                            firstNamespace, ns,
+                            firstNamespace.getClusterName() + "/" + firstNamespace.getName(),
+                            ns.getClusterName() + "/" + ns.getName(),
+                            validationConfig);
+                } else {
+                    comparison = NamespaceComparator.compareNamespace(
+                            firstNamespace.getObjects(), ns.getObjects(),
+                            firstNamespace.getClusterName() + "/" + firstNamespace.getName(),
+                            ns.getClusterName() + "/" + ns.getName(),
+                            validationConfig);
+                }
                 
                 comparisons.put(comparisonKey, comparison);
                 totalDifferences += comparison.getSummary().getDifferencesCount();
@@ -533,6 +566,13 @@ public class AsyncValidationExecutor {
         jsonExporter.exportToJson(jobId, comparisons, request.getDescription(), jsonFile);
         
         log.info("Exported JSON results to {}", jsonFile.getAbsolutePath());
+        
+        // Export CNF-specific JSON if this is a CNF checklist request
+        if (request.getCnfChecklistRequest() != null) {
+            File cnfJsonFile = resultsDir.resolve("cnf-results.json").toFile();
+            exportCnfJson(jobId, request, comparisons, cnfJsonFile, targets.size());
+            log.info("Exported CNF JSON results (with flexible matching): {}", cnfJsonFile.getAbsolutePath());
+        }
         
         // Export to Excel if requested
         if (request.getExportExcel() == null || request.getExportExcel()) {
@@ -656,10 +696,21 @@ public class AsyncValidationExecutor {
                 for (int i = 1; i < namespaceModels.size(); i++) {
                     FlatNamespaceModel ns = namespaceModels.get(i);
                     String comparisonKey = buildComparisonKey(baselineModel, ns);
-                    NamespaceComparison comparison = NamespaceComparator.compareNamespace(
-                            baselineModel.getObjects(), ns.getObjects(),
-                            baselineModel.getName(), ns.getName(),
-                            validationConfig);
+                    NamespaceComparison comparison;
+                    if (FeatureFlags.getInstance().isUseSemanticComparison()) {
+                        log.info("[V2] Using semantic comparison for {}", comparisonKey);
+                        comparison = ValidationServiceV2.compareFlat(
+                                baselineModel, ns,
+                                baselineModel.getClusterName() + "/" + baselineModel.getName(),
+                                ns.getClusterName() + "/" + ns.getName(),
+                                validationConfig);
+                    } else {
+                        comparison = NamespaceComparator.compareNamespace(
+                                baselineModel.getObjects(), ns.getObjects(),
+                                baselineModel.getClusterName() + "/" + baselineModel.getName(),
+                                ns.getClusterName() + "/" + ns.getName(),
+                                validationConfig);
+                    }
                     comparisons.put(comparisonKey, comparison);
                 }
             } else if (namespaceModels.size() >= 2) {
@@ -668,10 +719,21 @@ public class AsyncValidationExecutor {
                 for (int i = 1; i < namespaceModels.size(); i++) {
                     FlatNamespaceModel ns = namespaceModels.get(i);
                     String comparisonKey = buildComparisonKey(firstNamespace, ns);
-                    NamespaceComparison comparison = NamespaceComparator.compareNamespace(
-                            firstNamespace.getObjects(), ns.getObjects(),
-                            firstNamespace.getName(), ns.getName(),
-                            validationConfig);
+                    NamespaceComparison comparison;
+                    if (FeatureFlags.getInstance().isUseSemanticComparison()) {
+                        log.info("[V2] Using semantic comparison for {}", comparisonKey);
+                        comparison = ValidationServiceV2.compareFlat(
+                                firstNamespace, ns,
+                                firstNamespace.getClusterName() + "/" + firstNamespace.getName(),
+                                ns.getClusterName() + "/" + ns.getName(),
+                                validationConfig);
+                    } else {
+                        comparison = NamespaceComparator.compareNamespace(
+                                firstNamespace.getObjects(), ns.getObjects(),
+                                firstNamespace.getClusterName() + "/" + firstNamespace.getName(),
+                                ns.getClusterName() + "/" + ns.getName(),
+                                validationConfig);
+                    }
                     comparisons.put(comparisonKey, comparison);
                 }
             }
@@ -794,10 +856,19 @@ public class AsyncValidationExecutor {
             String baselineLabel = vimName + "/" + namespace + " (Baseline)";
             String actualLabel = vimName + "/" + namespace + " (Actual)";
             
-            NamespaceComparison comparison = NamespaceComparator.compareNamespace(
-                    baselineModel.getObjects(), actualModel.getObjects(),
-                    baselineLabel, actualLabel,
-                    validationConfig);
+            NamespaceComparison comparison;
+            if (FeatureFlags.getInstance().isUseSemanticComparison()) {
+                log.info("[V2] Using semantic comparison for CNF checklist async: {}", comparisonKey);
+                comparison = ValidationServiceV2.compareFlat(
+                        baselineModel, actualModel,
+                        baselineLabel, actualLabel,
+                        validationConfig);
+            } else {
+                comparison = NamespaceComparator.compareNamespace(
+                        baselineModel.getObjects(), actualModel.getObjects(),
+                        baselineLabel, actualLabel,
+                        validationConfig);
+            }
             
             comparisons.put(comparisonKey, comparison);
             totalDifferences += comparison.getSummary().getDifferencesCount();
@@ -893,10 +964,23 @@ public class AsyncValidationExecutor {
             String baselineLabel = vimName + "/" + namespace + " (Baseline)";
             String actualLabel = vimName + "/" + namespace + " (Actual)";
             
-            NamespaceComparison comparison = NamespaceComparator.compareNamespace(
-                    baselineModel.getObjects(), actualModel.getObjects(),
-                    baselineLabel, actualLabel,
-                    validationConfig);
+            NamespaceComparison comparison;
+            // Use V2 flag from request (determined by matchingStrategy), fallback to feature flag
+            boolean useSemanticV2 = request.shouldUseSemanticV2() || FeatureFlags.getInstance().isUseSemanticComparison();
+            
+            if (useSemanticV2) {
+                log.info("[V2] Using semantic comparison for CNF checklist sync: {} (strategy: {})", 
+                        comparisonKey, request.getMatchingStrategy());
+                comparison = ValidationServiceV2.compareFlat(
+                        baselineModel, actualModel,
+                        baselineLabel, actualLabel,
+                        validationConfig);
+            } else {
+                comparison = NamespaceComparator.compareNamespace(
+                        baselineModel.getObjects(), actualModel.getObjects(),
+                        baselineLabel, actualLabel,
+                        validationConfig);
+            }
             
             comparisons.put(comparisonKey, comparison);
             totalDifferences += comparison.getSummary().getDifferencesCount();

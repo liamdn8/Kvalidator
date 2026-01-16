@@ -2,9 +2,30 @@
 
 Tool tự động kiểm tra và validate cấu hình trên môi trường ảo hóa và cloud cho viễn thông (NFV Infrastructure).
 
-## 🚀 New: REST API Support
+## 🚀 New: V2 Semantic Comparison Engine
 
-KValidator now supports REST API for web-based validation! 
+**V2 giải quyết vấn đề list ordering** - Khi containers, volumes, env vars trong K8s thay đổi thứ tự nhưng vẫn giống nhau, V1 báo DIFFERENT (false positive). V2 sử dụng identity-based matching để so sánh chính xác 100%.
+
+**Quick Start V2:**
+```bash
+# Enable V2 semantic comparison
+export USE_SEMANTIC_COMPARISON=true
+java -jar target/quarkus-app/quarkus-run.jar
+
+# Test order independence
+curl http://localhost:8080/api/v2/demo/order-independence
+
+# V2 works with ALL existing APIs - no changes needed!
+curl -X POST http://localhost:8080/api/validate/cnf-checklist ...
+```
+
+**📖 V2 Documentation:** [V2_QUICK_START.md](V2_QUICK_START.md) | [SEMANTIC_COMPARISON_V2.md](SEMANTIC_COMPARISON_V2.md)
+
+---
+
+## 🌐 REST API Support
+
+KValidator supports REST API for web-based validation! 
 
 **Quick Start:**
 ```bash
@@ -26,14 +47,20 @@ curl -X POST http://localhost:8080/kvalidator/api/validate \
 
 ## Tính năng
 
-### 1. REST API (MỚI) 🌐
+### 1. V2 Semantic Comparison (MỚI) 🎯
+- **Order-independent comparison**: containers[nginx] thay vì containers[0]
+- **100% accurate**: Không bị false DIFFERENT khi list thay đổi thứ tự
+- **Backward compatible**: Sử dụng với tất cả API hiện có
+- **Feature flag controlled**: Bật/tắt V2 dễ dàng via environment variable
+
+### 2. REST API 🌐
 - **Async job processing**: Submit job, track progress, download results
 - **Dual export**: Excel + JSON for web display
 - **Real-time progress**: Track validation progress (0-100%)
 - **Swagger UI**: Interactive API documentation
 - **Ready for web integration**: CORS enabled, JSON API
 
-### 2. Đối chiếu thiết kế hệ thống so với thực tế triển khai
+### 3. Đối chiếu thiết kế hệ thống so với thực tế triển khai
 - So sánh cấu hình Kubernetes từ file YAML design/baseline với môi trường đang chạy
 - Phát hiện sự khác biệt giữa bản thiết kế và triển khai thực tế
 

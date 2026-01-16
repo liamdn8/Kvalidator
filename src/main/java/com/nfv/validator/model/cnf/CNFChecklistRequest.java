@@ -40,6 +40,24 @@ public class CNFChecklistRequest {
     private String cluster;
     
     /**
+     * Global matching strategy for field comparison
+     * - "exact": Exact field path match (V1 engine, fastest)
+     * - "value": Search by value in list (V1 flexible) - DEFAULT
+     * - "identity": Use semantic/identity-based matching (V2 engine)
+     */
+    @JsonProperty("matchingStrategy")
+    @Builder.Default
+    private String matchingStrategy = "value";
+    
+    /**
+     * Determine if V2 semantic comparison should be used based on matching strategy
+     * @return true if matchingStrategy is "identity", false otherwise
+     */
+    public boolean shouldUseSemanticV2() {
+        return "identity".equalsIgnoreCase(matchingStrategy);
+    }
+    
+    /**
      * Validate the entire checklist request
      */
     public void validate() throws IllegalArgumentException {

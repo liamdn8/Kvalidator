@@ -49,6 +49,22 @@ public class NamespaceComparison {
     }
     
     /**
+     * Get all object results as a list
+     */
+    public List<ObjectComparison> getAllObjectResults() {
+        return new ArrayList<>(objectComparisons.values());
+    }
+    
+    /**
+     * Get total number of differences across all objects
+     */
+    public int getDifferenceCount() {
+        return objectComparisons.values().stream()
+                .mapToInt(ObjectComparison::getDifferenceCount)
+                .sum();
+    }
+    
+    /**
      * Get summary statistics
      */
     public ComparisonSummary getSummary() {

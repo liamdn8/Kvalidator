@@ -222,11 +222,19 @@ public class ValidationJobService {
     
     /**
      * Get JSON results file for a job
+     * Prioritizes CNF results (with flexible matching) over standard validation results
      */
     public File getJsonResultsFile(String jobId) {
         Path dir = getJobResultsDirectory(jobId);
-        File jsonFile = dir.resolve("validation-results.json").toFile();
         
+        // Prefer CNF results if available (includes flexible matching)
+        File cnfFile = dir.resolve("cnf-results.json").toFile();
+        if (cnfFile.exists()) {
+            return cnfFile;
+        }
+        
+        // Fall back to standard validation results
+        File jsonFile = dir.resolve("validation-results.json").toFile();
         if (jsonFile.exists()) {
             return jsonFile;
         }

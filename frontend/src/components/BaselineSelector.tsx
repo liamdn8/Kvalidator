@@ -15,7 +15,7 @@ interface BaselineSelectorProps {
 }
 
 export const BaselineSelector = ({ selectedNamespaces, onBaselineChange }: BaselineSelectorProps) => {
-  const [type, setType] = useState<'yaml' | 'namespace'>('yaml');
+  const [type, setType] = useState<'yaml' | 'namespace'>('namespace');
   const [yamlContent, setYamlContent] = useState('');
   const [selectedIndex, setSelectedIndex] = useState<number>();
 

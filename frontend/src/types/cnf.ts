@@ -14,6 +14,7 @@ export interface CNFChecklistItem {
 export interface CNFChecklistRequest {
   items: CNFChecklistItem[];
   description?: string;
+  matchingStrategy?: 'exact' | 'value' | 'identity'; // Default: 'value'
 }
 
 /**

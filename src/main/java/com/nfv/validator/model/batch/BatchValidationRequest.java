@@ -32,6 +32,12 @@ public class BatchValidationRequest {
     private List<ValidationRequest> requests = new ArrayList<>();
     
     /**
+     * Original CNF checklist request (transient, not serialized to YAML)
+     * Used to preserve CNF validation context through batch execution
+     */
+    private transient Object cnfChecklistRequest;
+    
+    /**
      * Global settings applied to all requests (can be overridden per request)
      */
     private GlobalSettings settings;
@@ -113,7 +119,19 @@ public class BatchValidationRequest {
         private String summaryReportPath;
         
         /**
-         * Get output directory with timestamp suffix for organizing results
+         * Use semantic comparison V2 engine (identity-based, order-independent)
+         * Default: false (uses V1 index-based comparison)
+         */
+        private boolean useSemanticV2 = true;
+        
+        /**         * Global matching strategy for field comparison
+         * - "exact": Exact field path match
+         * - "value": Search by value in list (flexible index) - DEFAULT
+         * - "identity": Use semantic/identity-based matching
+         */
+        private String matchingStrategy = "value";
+        
+        /**         * Get output directory with timestamp suffix for organizing results
          */
         public String getOutputDirectoryWithTimestamp() {
             String baseDir = outputDirectory != null ? outputDirectory : "batch-results";

@@ -209,10 +209,15 @@ public class CNFChecklistService {
         BatchValidationRequest.GlobalSettings settings = new BatchValidationRequest.GlobalSettings();
         settings.setContinueOnError(true);
         settings.setGenerateSummaryReport(true);
+        settings.setUseSemanticV2(cnfRequest.shouldUseSemanticV2()); // Auto-determine from matchingStrategy
+        settings.setMatchingStrategy(cnfRequest.getMatchingStrategy()); // Pass matchingStrategy to batch
         batchRequest.setSettings(settings);
         
-        log.info("Converted CNF checklist to batch request with {} validation requests (flattened approach)", 
-                validationRequests.size());
+        // Store original CNF request for later use (flexible matching in convertToCnfComparison)
+        batchRequest.setCnfChecklistRequest(cnfRequest);
+        
+        log.info("Converted CNF checklist to batch request with {} validation requests (flattened approach), matchingStrategy={}, useSemanticV2={}", 
+                validationRequests.size(), cnfRequest.getMatchingStrategy(), cnfRequest.shouldUseSemanticV2());
         
         return batchRequest;
     }
@@ -535,8 +540,11 @@ public class CNFChecklistService {
                     result.setMessage("Object not found in runtime cluster");
                     missingCount++;
                 } else {
-                    // Find the specific field comparison
-                    KeyComparison fieldComp = findFieldComparison(objComp, item.getFieldKey());
+                    // Find the specific field comparison using matching strategy from request
+                    String strategy = request.getMatchingStrategy() != null ? request.getMatchingStrategy() : "value";
+                    log.info("CNF item validation: fieldKey='{}', manoValue='{}', matchingStrategy='{}'", 
+                            item.getFieldKey(), item.getManoValue(), strategy);
+                    KeyComparison fieldComp = findFieldComparison(objComp, item.getFieldKey(), item.getManoValue(), strategy);
                     
                     if (fieldComp == null) {
                         // Field not found
@@ -547,34 +555,55 @@ public class CNFChecklistService {
                     } else {
                         result.setActualValue(fieldComp.getRightValue());
                         
-                        // Map ComparisonStatus to ValidationStatus
-                        switch (fieldComp.getStatus()) {
-                            case MATCH:
-                            case BOTH_NULL:
-                                result.setStatus(CnfComparison.ValidationStatus.MATCH);
-                                matchCount++;
-                                break;
-                            case DIFFERENT:
-                                result.setStatus(CnfComparison.ValidationStatus.DIFFERENT);
-                                result.setMessage(String.format("Expected: %s, Actual: %s", 
-                                        fieldComp.getLeftValue(), fieldComp.getRightValue()));
-                                differenceCount++;
-                                break;
-                            case ONLY_IN_RIGHT:
-                                result.setActualValue(fieldComp.getRightValue());
-                                result.setStatus(CnfComparison.ValidationStatus.MISSING_IN_RUNTIME);
-                                result.setMessage("Field exists in runtime but not in baseline");
-                                missingCount++;
-                                break;
-                            case ONLY_IN_LEFT:
-                                result.setStatus(CnfComparison.ValidationStatus.MISSING_IN_RUNTIME);
-                                result.setMessage("Field missing in runtime");
-                                missingCount++;
-                                break;
-                            default:
-                                result.setStatus(CnfComparison.ValidationStatus.ERROR);
-                                result.setMessage("Unknown comparison status");
-                                errorCount++;
+                        // Store matched field key if different from requested (index remapping)
+                        boolean indexRemapped = false;
+                        if (!item.getFieldKey().equals(fieldComp.getKey()) && 
+                            !item.getFieldKey().equals(fieldComp.getKey().replace("spec.", ""))) {
+                            result.setMatchedFieldKey(fieldComp.getKey());
+                            indexRemapped = true;
+                            log.info("Index remapping: requested='{}' matched='{}' value='{}'", 
+                                    item.getFieldKey(), fieldComp.getKey(), fieldComp.getRightValue());
+                        }
+                        
+                        // For flexible matching (value/identity), if we found a match by value,
+                        // the actual value MUST match the expected value (that's how we found it!)
+                        // So override the status to MATCH regardless of what the comparison engine says
+                        if (indexRemapped && "value".equals(strategy) && 
+                            item.getManoValue() != null && item.getManoValue().equals(fieldComp.getRightValue())) {
+                            result.setStatus(CnfComparison.ValidationStatus.MATCH);
+                            result.setMessage(null); // Clear any diff message
+                            matchCount++;
+                            log.info("Flexible match confirmed: value='{}' (index remapped)", fieldComp.getRightValue());
+                        } else {
+                            // Map ComparisonStatus to ValidationStatus for exact match or no remapping
+                            switch (fieldComp.getStatus()) {
+                                case MATCH:
+                                case BOTH_NULL:
+                                    result.setStatus(CnfComparison.ValidationStatus.MATCH);
+                                    matchCount++;
+                                    break;
+                                case DIFFERENT:
+                                    result.setStatus(CnfComparison.ValidationStatus.DIFFERENT);
+                                    result.setMessage(String.format("Expected: %s, Actual: %s", 
+                                            fieldComp.getLeftValue(), fieldComp.getRightValue()));
+                                    differenceCount++;
+                                    break;
+                                case ONLY_IN_RIGHT:
+                                    result.setActualValue(fieldComp.getRightValue());
+                                    result.setStatus(CnfComparison.ValidationStatus.MISSING_IN_RUNTIME);
+                                    result.setMessage("Field exists in runtime but not in baseline");
+                                    missingCount++;
+                                    break;
+                                case ONLY_IN_LEFT:
+                                    result.setStatus(CnfComparison.ValidationStatus.MISSING_IN_RUNTIME);
+                                    result.setMessage("Field missing in runtime");
+                                    missingCount++;
+                                    break;
+                                default:
+                                    result.setStatus(CnfComparison.ValidationStatus.ERROR);
+                                    result.setMessage("Unknown comparison status");
+                                    errorCount++;
+                            }
                         }
                     }
                 }
@@ -624,19 +653,122 @@ public class CNFChecklistService {
     }
     
     /**
-     * Find KeyComparison for a specific field
+     * Find KeyComparison for a specific field with matching strategy
+     * 
+     * @param objComp Object comparison result
+     * @param fieldKey Field path (e.g., "spec.template.spec.containers[0].image")
+     * @param expectedValue Expected value to match
+     * @param strategy Matching strategy: "exact", "value", or "identity"
+     * @return KeyComparison if found, null otherwise
      */
-    private KeyComparison findFieldComparison(ObjectComparison objComp, String fieldKey) {
-        for (KeyComparison item : objComp.getItems()) {
-            // Check exact match
-            if (item.getKey().equals(fieldKey)) {
-                return item;
+    private KeyComparison findFieldComparison(ObjectComparison objComp, String fieldKey, 
+                                             String expectedValue, String strategy) {
+        
+        log.debug("Finding field comparison: fieldKey='{}', strategy='{}', expectedValue='{}'", 
+                fieldKey, strategy, expectedValue);
+        
+        // Strategy 1: EXACT match - traditional exact field path
+        if ("exact".equals(strategy)) {
+            for (KeyComparison item : objComp.getItems()) {
+                if (item.getKey().equals(fieldKey) || item.getKey().equals("spec." + fieldKey)) {
+                    log.debug("Found exact match: '{}'", item.getKey());
+                    return item;
+                }
             }
-            // Check match with spec prefix (since FlatObjectModel adds spec. prefix to all spec fields)
-            if (item.getKey().equals("spec." + fieldKey)) {
-                return item;
-            }
+            return null;
         }
-        return null;
+        
+        // Strategy 2: VALUE-based search - find by value in any list item (numeric index)
+        // Example: containers[1].image with value "nginx:1.22" 
+        // -> finds any container with image="nginx:1.22"
+        // Nested example: containers[0].env[1].name -> finds env with matching name value
+        if ("value".equals(strategy)) {
+            if (!fieldKey.contains("[") || !fieldKey.contains("].")) {
+                // Not a list field, fallback to exact match
+                return findFieldComparison(objComp, fieldKey, expectedValue, "exact");
+            }
+            
+            // Extract list components - use LAST "[" for nested arrays
+            int lastBracketStart = fieldKey.lastIndexOf("[");
+            int listStart = fieldKey.lastIndexOf(".", lastBracketStart);
+            String prefix = listStart > 0 ? fieldKey.substring(0, listStart + 1) : "";
+            String listName = fieldKey.substring(listStart + 1, lastBracketStart);
+            int indexEnd = fieldKey.indexOf("]", lastBracketStart);
+            String suffix = fieldKey.substring(indexEnd + 2); // Skip "].
+            
+            log.debug("Value-based search in '{}': prefix='{}', suffix='{}', value='{}'", 
+                    listName, prefix, suffix, expectedValue);
+            
+            // Search for any item in the list with matching value
+            for (KeyComparison item : objComp.getItems()) {
+                String key = item.getKey();
+                
+                if (key.contains(listName + "[") && key.endsWith("." + suffix)) {
+                    String itemPrefix = key.substring(0, key.indexOf(listName + "["));
+                    if (itemPrefix.equals(prefix) || itemPrefix.equals("spec." + prefix)) {
+                        if (expectedValue != null && expectedValue.equals(item.getRightValue())) {
+                            log.info("Found value-based match in {}: requested='{}' matched='{}' value='{}'", 
+                                    listName, fieldKey, key, expectedValue);
+                            // Return the item as-is to preserve actual matched index
+                            return item;
+                        }
+                    }
+                }
+            }
+            
+            log.debug("No value-based match found for {}='{}'", suffix, expectedValue);
+            return null;
+        }
+        
+        // Strategy 3: IDENTITY-based search - semantic/name-based (V2 format)
+        // Example: containers[nginx].image
+        // -> matches exactly containers[nginx].image from V2 semantic comparison
+        if ("identity".equals(strategy)) {
+            // Try exact match first (V2 semantic keys use identity)
+            for (KeyComparison item : objComp.getItems()) {
+                if (item.getKey().equals(fieldKey) || item.getKey().equals("spec." + fieldKey)) {
+                    log.debug("Found identity-based exact match: '{}'", item.getKey());
+                    return item;
+                }
+            }
+            
+            // If not found, try partial match on identity name
+            if (fieldKey.contains("[") && fieldKey.contains("].")) {
+                int indexStart = fieldKey.indexOf("[") + 1;
+                int indexEnd = fieldKey.indexOf("]");
+                String identityName = fieldKey.substring(indexStart, indexEnd);
+                
+                // Extract components
+                int listStart = fieldKey.lastIndexOf(".", fieldKey.indexOf("["));
+                String prefix = listStart > 0 ? fieldKey.substring(0, listStart + 1) : "";
+                String listName = fieldKey.substring(listStart + 1, fieldKey.indexOf("["));
+                String suffix = fieldKey.substring(indexEnd + 2);
+                
+                log.debug("Identity-based search: listName='{}', identity='{}', suffix='{}'", 
+                        listName, identityName, suffix);
+                
+                // Search for matching identity in the list
+                String searchPattern = listName + "[" + identityName + "]." + suffix;
+                for (KeyComparison item : objComp.getItems()) {
+                    String key = item.getKey();
+                    
+                    if (key.contains(searchPattern)) {
+                        String itemPrefix = key.substring(0, key.indexOf(listName + "["));
+                        if (itemPrefix.equals(prefix) || itemPrefix.equals("spec." + prefix)) {
+                            log.info("Found identity-based match: '{}'", key);
+                            return item;
+                        }
+                    }
+                }
+                
+                log.debug("No identity-based match found for '{}[{}]'", listName, identityName);
+            }
+            
+            return null;
+        }
+        
+        // Unknown strategy, fallback to exact
+        log.warn("Unknown matching strategy '{}', using exact match", strategy);
+        return findFieldComparison(objComp, fieldKey, expectedValue, "exact");
     }
 }
