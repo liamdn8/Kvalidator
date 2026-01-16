@@ -121,6 +121,9 @@ public class ValidationResource {
             // Validate checklist items
             request.validate();
             
+            // Auto-convert to identity-based matching if applicable
+            request = cnfChecklistService.autoConvertToIdentityMatching(request);
+            
             // Convert CNF checklist to batch validation request using flattened approach
             // This allows using the same output format and UI as batch validation
             BatchValidationRequest batchRequest = cnfChecklistService.convertToBatchRequestFlattened(request);
@@ -178,6 +181,9 @@ public class ValidationResource {
             // This is not recommended for production as it blocks the HTTP request
             // Use async endpoint (/cnf-checklist) instead
             request.validate();
+            
+            // Auto-convert to identity-based matching if applicable
+            request = cnfChecklistService.autoConvertToIdentityMatching(request);
             
             // Convert to batch request using flattened approach
             BatchValidationRequest batchRequest = cnfChecklistService.convertToBatchRequestFlattened(request);

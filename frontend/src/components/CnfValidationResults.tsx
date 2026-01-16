@@ -1,293 +1,115 @@
-import { Card, Table, Tag, Statistic, Row, Col, Button } from 'antd';
-import { CheckCircle, XCircle, AlertCircle, Download } from 'lucide-react';
-import type { CnfValidationResultJson, CnfComparison, CnfChecklistResult } from '../types/cnf';
-import * as XLSX from 'xlsx';
+import type { CnfValidationResultJson } from '../types/cnf';
+import type { ValidationResultJson } from '../types';
+import { ValidationResults } from './ValidationResults';
 
 interface CnfValidationResultsProps {
   result: CnfValidationResultJson;
 }
 
-const getStatusColor = (status: string) => {
-  switch (status) {
-    case 'MATCH': return 'success';
-    case 'DIFFERENT': return 'error';
-    case 'MISSING_IN_RUNTIME': return 'warning';
-    case 'ERROR': return 'default';
-    default: return 'default';
-  }
-};
-
-const getStatusIcon = (status: string) => {
-  switch (status) {
-    case 'MATCH': return <CheckCircle size={16} color="green" />;
-    case 'DIFFERENT': return <XCircle size={16} color="red" />;
-    case 'MISSING_IN_RUNTIME': return <AlertCircle size={16} color="orange" />;
-    case 'ERROR': return <XCircle size={16} color="gray" />;
-    default: return null;
-  }
-};
-
-export const CnfValidationResults = ({ result }: CnfValidationResultsProps) => {
+/**
+ * Mapper function: Convert CNF validation result to standard ValidationResultJson format
+ * This allows reusing the ValidationResults component for CNF validation
+ */
+const mapCnfToValidationResult = (cnfResult: CnfValidationResultJson): ValidationResultJson => {
+  const comparisons: Record<string, any> = {};
   
-  const exportToExcel = () => {
-    const workbook = XLSX.utils.book_new();
+  // Process each CNF comparison (VIM/Namespace)
+  cnfResult.results.forEach((cnfComp) => {
+    const namespaceKey = `${cnfComp.vimName}/${cnfComp.namespace}`;
     
-    // Overall summary sheet
-    const summaryData = [
-      ['CNF Checklist Validation Results'],
-      ['Job ID', result.jobId],
-      ['Description', result.description],
-      ['Submitted At', new Date(result.submittedAt).toLocaleString()],
-      ['Completed At', new Date(result.completedAt).toLocaleString()],
-      [],
-      ['Overall Summary'],
-      ['Total VIM/Namespaces', result.summary.totalVimNamespaces],
-      ['Total Fields', result.summary.totalFields],
-      ['Matches', result.summary.totalMatches],
-      ['Differences', result.summary.totalDifferences],
-      ['Missing', result.summary.totalMissing],
-      ['Errors', result.summary.totalErrors],
-    ];
+    // Create comparison key (baseline vs actual)
+    const comparisonKey = `${namespaceKey} (Baseline)_vs_${namespaceKey} (Actual)`;
     
-    const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
-    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
+    // Group items by object
+    const objectComparisonsMap = new Map<string, any[]>();
     
-    // Results sheet with all items
-    const resultsData: any[] = [[
-      'VIM Name',
-      'Namespace',
-      'Kind',
-      'Object Name',
-      'Field Key',
-      'Baseline Value',
-      'Actual Value',
-      'Status',
-      'Message'
-    ]];
-    
-    result.results.forEach(comp => {
-      comp.items.forEach(item => {
-        resultsData.push([
-          comp.vimName,
-          comp.namespace,
-          item.kind,
-          item.objectName,
-          item.fieldKey,
-          item.baselineValue,
-          item.actualValue || '',
-          item.status,
-          item.message || ''
-        ]);
+    cnfComp.items.forEach((item) => {
+      const objectKey = `${item.kind}/${item.objectName}`;
+      
+      if (!objectComparisonsMap.has(objectKey)) {
+        objectComparisonsMap.set(objectKey, []);
+      }
+      
+      // Map CNF status to standard comparison status
+      let comparisonStatus: 'MATCH' | 'DIFFERENT' | 'ONLY_IN_LEFT' | 'ONLY_IN_RIGHT' | 'VALUE_MISMATCH';
+      
+      if (item.status === 'MATCH') {
+        comparisonStatus = 'MATCH';
+      } else if (item.status === 'MISSING_IN_RUNTIME') {
+        comparisonStatus = 'ONLY_IN_LEFT'; // Exists in baseline but not in runtime
+      } else if (item.status === 'DIFFERENT') {
+        comparisonStatus = 'VALUE_MISMATCH';
+      } else {
+        comparisonStatus = 'DIFFERENT';
+      }
+      
+      objectComparisonsMap.get(objectKey)!.push({
+        key: item.fieldKey,
+        path: item.fieldKey,
+        leftValue: item.baselineValue,
+        rightValue: item.actualValue,
+        status: comparisonStatus,
+        match: item.status === 'MATCH'
       });
     });
     
-    const resultsSheet = XLSX.utils.aoa_to_sheet(resultsData);
-    XLSX.utils.book_append_sheet(workbook, resultsSheet, 'Results');
+    // Build objectComparisons
+    const objectComparisons: Record<string, any> = {};
     
-    // Download
-    XLSX.writeFile(workbook, `cnf-validation-${result.jobId}.xlsx`);
+    objectComparisonsMap.forEach((items, objectKey) => {
+      const firstItem = cnfComp.items.find(i => `${i.kind}/${i.objectName}` === objectKey);
+      if (!firstItem) return;
+      
+      const differenceCount = items.filter(i => i.status !== 'MATCH').length;
+      
+      objectComparisons[objectKey] = {
+        objectId: objectKey,
+        objectType: firstItem.kind,
+        fullMatch: differenceCount === 0,
+        differenceCount: differenceCount,
+        items: items
+      };
+    });
+    
+    comparisons[comparisonKey] = {
+      leftNamespace: `${namespaceKey} (Baseline)`,
+      rightNamespace: `${namespaceKey} (Actual)`,
+      objectComparisons: objectComparisons
+    };
+  });
+  
+  // Calculate total objects
+  const totalObjects = cnfResult.results.reduce((sum, comp) => {
+    const uniqueObjects = new Set(comp.items.map(item => `${item.kind}/${item.objectName}`));
+    return sum + uniqueObjects.size;
+  }, 0);
+  
+  return {
+    jobId: cnfResult.jobId,
+    submittedAt: cnfResult.submittedAt,
+    completedAt: cnfResult.completedAt,
+    description: cnfResult.description,
+    summary: {
+      totalObjects: totalObjects,
+      totalDifferences: cnfResult.summary.totalDifferences + cnfResult.summary.totalMissing,
+      namespacePairs: cnfResult.summary.totalVimNamespaces,
+      executionTimeMs: cnfResult.summary.executionTimeMs
+    },
+    comparisons: comparisons
   };
+};
 
-  const columns = [
-    {
-      title: 'Kind',
-      dataIndex: 'kind',
-      key: 'kind',
-      width: 120,
-      fixed: 'left' as const,
-      filters: [...new Set(result.results.flatMap(r => r.items.map(i => i.kind)))].map(k => ({ text: k, value: k })),
-      onFilter: (value: any, record: CnfChecklistResult) => record.kind === value,
-    },
-    {
-      title: 'Object Name',
-      dataIndex: 'objectName',
-      key: 'objectName',
-      width: 180,
-      fixed: 'left' as const,
-      render: (text: string) => <strong>{text}</strong>,
-    },
-    {
-      title: 'Field Key',
-      dataIndex: 'fieldKey',
-      key: 'fieldKey',
-      width: 300,
-      render: (text: string) => (
-        <code style={{ fontSize: '11px', color: '#1890ff' }}>
-          {text}
-        </code>
-      ),
-    },
-    {
-      title: 'Expected (Baseline)',
-      dataIndex: 'baselineValue',
-      key: 'baselineValue',
-      width: 250,
-      render: (text: string) => (
-        <div style={{ 
-          fontSize: '12px', 
-          background: '#e6f7ff', 
-          padding: '6px 10px', 
-          borderRadius: '4px',
-          border: '1px solid #91d5ff',
-          fontFamily: 'monospace',
-          wordBreak: 'break-all'
-        }}>
-          {text}
-        </div>
-      ),
-    },
-    {
-      title: 'Actual (Runtime)',
-      dataIndex: 'actualValue',
-      key: 'actualValue',
-      width: 250,
-      render: (text: string | null, record: CnfChecklistResult) => {
-        if (!text) {
-          return (
-            <div style={{ 
-              fontSize: '12px', 
-              background: '#fff1f0', 
-              padding: '6px 10px', 
-              borderRadius: '4px',
-              border: '1px solid #ffa39e',
-              color: '#999', 
-              fontStyle: 'italic' 
-            }}>
-              ⚠️ Not found in runtime
-            </div>
-          );
-        }
-        
-        const isMatch = record.status === 'MATCH';
-        return (
-          <div style={{ 
-            fontSize: '12px', 
-            background: isMatch ? '#f6ffed' : '#fff1f0', 
-            padding: '6px 10px', 
-            borderRadius: '4px',
-            border: `1px solid ${isMatch ? '#b7eb8f' : '#ffa39e'}`,
-            fontFamily: 'monospace',
-            wordBreak: 'break-all',
-            color: isMatch ? '#52c41a' : '#ff4d4f'
-          }}>
-            {isMatch && '✓ '}{text}
-          </div>
-        );
-      },
-    },
-    {
-      title: 'Status',
-      dataIndex: 'status',
-      key: 'status',
-      width: 140,
-      fixed: 'right' as const,
-      filters: [
-        { text: 'Match', value: 'MATCH' },
-        { text: 'Different', value: 'DIFFERENT' },
-        { text: 'Missing', value: 'MISSING_IN_RUNTIME' },
-        { text: 'Error', value: 'ERROR' },
-      ],
-      onFilter: (value: any, record: CnfChecklistResult) => record.status === value,
-      render: (status: string) => (
-        <Tag color={getStatusColor(status)} icon={getStatusIcon(status)} style={{ fontSize: '12px' }}>
-          {status.replace(/_/g, ' ')}
-        </Tag>
-      ),
-    },
-    {
-      title: 'Message',
-      dataIndex: 'message',
-      key: 'message',
-      width: 200,
-      ellipsis: true,
-      render: (text: string) => text || '-',
-    },
-  ];
-
-  return (
-    <div style={{ marginTop: 24 }}>
-      <Card 
-        title="CNF Validation Results" 
-        extra={
-          <Button icon={<Download size={16} />} onClick={exportToExcel}>
-            Export Excel
-          </Button>
-        }
-      >
-        {/* Overall Summary */}
-        <Row gutter={16} style={{ marginBottom: 24 }}>
-          <Col span={4}>
-            <Statistic 
-              title="Total Fields" 
-              value={result.summary.totalFields}
-              prefix={<CheckCircle size={20} />}
-            />
-          </Col>
-          <Col span={4}>
-            <Statistic 
-              title="Matches" 
-              value={result.summary.totalMatches}
-              valueStyle={{ color: '#3f8600' }}
-              prefix={<CheckCircle size={20} color="green" />}
-            />
-          </Col>
-          <Col span={4}>
-            <Statistic 
-              title="Differences" 
-              value={result.summary.totalDifferences}
-              valueStyle={{ color: '#cf1322' }}
-              prefix={<XCircle size={20} color="red" />}
-            />
-          </Col>
-          <Col span={4}>
-            <Statistic 
-              title="Missing" 
-              value={result.summary.totalMissing}
-              valueStyle={{ color: '#d46b08' }}
-              prefix={<AlertCircle size={20} color="orange" />}
-            />
-          </Col>
-          <Col span={4}>
-            <Statistic 
-              title="VIM/Namespaces" 
-              value={result.summary.totalVimNamespaces}
-            />
-          </Col>
-          <Col span={4}>
-            <Statistic 
-              title="Execution Time" 
-              value={result.summary.executionTimeMs}
-              suffix="ms"
-            />
-          </Col>
-        </Row>
-
-        {/* Results by VIM/Namespace */}
-        {result.results.map((comp: CnfComparison) => (
-          <Card
-            key={`${comp.vimName}/${comp.namespace}`}
-            type="inner"
-            title={`${comp.vimName}/${comp.namespace}`}
-            style={{ marginBottom: 16 }}
-            extra={
-              <div>
-                <Tag color="success">{comp.summary.matchCount} Match</Tag>
-                <Tag color="error">{comp.summary.differenceCount} Diff</Tag>
-                <Tag color="warning">{comp.summary.missingCount} Missing</Tag>
-              </div>
-            }
-          >
-            <Table
-              dataSource={comp.items}
-              columns={columns}
-              rowKey={(_, index) => `${comp.vimName}-${comp.namespace}-${index}`}
-              pagination={{ pageSize: 10, showSizeChanger: true, showTotal: (total) => `Total ${total} fields` }}
-              size="small"
-              scroll={{ x: 'max-content' }}
-            />
-          </Card>
-        ))}
-      </Card>
-    </div>
-  );
+/**
+ * CNF Validation Results Component
+ * 
+ * This component wraps the standard ValidationResults component by mapping
+ * CNF validation result format to the standard validation result format.
+ * This ensures consistent UI/UX across different validation types.
+ */
+export const CnfValidationResults = ({ result }: CnfValidationResultsProps) => {
+  // Map CNF result to standard validation result format
+  const mappedResult = mapCnfToValidationResult(result);
+  
+  // Reuse the standard ValidationResults component
+  return <ValidationResults result={mappedResult} />;
 };

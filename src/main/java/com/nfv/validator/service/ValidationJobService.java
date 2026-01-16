@@ -208,11 +208,19 @@ public class ValidationJobService {
     
     /**
      * Get Excel report file for a job
+     * Checks for CNF checklist report first, then falls back to standard validation report
      */
     public File getExcelReportFile(String jobId) {
         Path dir = getJobResultsDirectory(jobId);
-        File xlsxFile = dir.resolve("validation-report.xlsx").toFile();
         
+        // Check for CNF checklist report first
+        File cnfXlsxFile = dir.resolve("cnf-checklist-validation.xlsx").toFile();
+        if (cnfXlsxFile.exists()) {
+            return cnfXlsxFile;
+        }
+        
+        // Fall back to standard validation report
+        File xlsxFile = dir.resolve("validation-report.xlsx").toFile();
         if (xlsxFile.exists()) {
             return xlsxFile;
         }

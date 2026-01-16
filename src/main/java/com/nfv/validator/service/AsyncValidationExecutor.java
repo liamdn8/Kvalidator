@@ -1,5 +1,6 @@
 package com.nfv.validator.service;
 
+import com.nfv.validator.adapter.SemanticToFlatAdapter;
 import com.nfv.validator.batch.BatchExecutor;
 import com.nfv.validator.batch.BatchSummaryReportGenerator;
 import com.nfv.validator.comparison.NamespaceComparator;
@@ -7,16 +8,20 @@ import com.nfv.validator.config.ConfigLoader;
 import com.nfv.validator.config.FeatureFlags;
 import com.nfv.validator.config.ValidationConfig;
 import com.nfv.validator.kubernetes.K8sDataCollector;
+import com.nfv.validator.kubernetes.K8sDataCollectorV2;
 import com.nfv.validator.kubernetes.KubernetesClusterManager;
-import com.nfv.validator.service.ValidationServiceV2;
 import com.nfv.validator.model.FlatNamespaceModel;
 import com.nfv.validator.model.FlatObjectModel;
 import com.nfv.validator.model.api.*;
 import com.nfv.validator.model.batch.BatchExecutionResult;
 import com.nfv.validator.model.batch.BatchValidationRequest;
 import com.nfv.validator.model.cnf.CNFChecklistRequest;
+import com.nfv.validator.model.comparison.CnfComparison;
 import com.nfv.validator.model.comparison.NamespaceComparison;
+import com.nfv.validator.model.semantic.SemanticNamespaceModel;
+import com.nfv.validator.report.CNFChecklistExcelGenerator;
 import com.nfv.validator.report.ExcelReportGenerator;
+import com.nfv.validator.service.ValidationServiceV2;
 import com.nfv.validator.yaml.YamlDataCollector;
 import io.fabric8.kubernetes.client.KubernetesClient;
 import lombok.extern.slf4j.Slf4j;
@@ -432,6 +437,16 @@ public class AsyncValidationExecutor {
                      namespaceModels.size(), baselineModel.getObjects().size());
         }
         
+        // Determine if we need semantic V2 collection (for identity matching)
+        boolean useSemanticV2 = false;
+        if (request.getCnfChecklistRequest() instanceof CNFChecklistRequest) {
+            CNFChecklistRequest cnfRequest = (CNFChecklistRequest) request.getCnfChecklistRequest();
+            String matchingStrategy = cnfRequest.getMatchingStrategy();
+            useSemanticV2 = "identity".equalsIgnoreCase(matchingStrategy);
+            log.info("CNF Checklist detected with matchingStrategy: {}, useSemanticV2: {}", 
+                     matchingStrategy, useSemanticV2);
+        }
+        
         int objectsCollected = 0;
         for (int i = 0; i < targets.size(); i++) {
             NamespaceTarget target = targets.get(i);
@@ -440,14 +455,52 @@ public class AsyncValidationExecutor {
                     20 + (40 * i / targets.size()), i, targets.size(), objectsCollected);
             
             KubernetesClient client = clusterManager.getClient(target.clusterName);
-            K8sDataCollector collector = new K8sDataCollector(client);
             
             FlatNamespaceModel model;
-            if (request.getKinds() != null && !request.getKinds().isEmpty()) {
-                model = collector.collectNamespaceByKinds(
-                        target.namespaceName, target.clusterName, request.getKinds());
+            if (useSemanticV2) {
+                // Use semantic V2 collection for identity matching
+                log.info("[V2] Using K8sDataCollectorV2 for {}/{}", target.clusterName, target.namespaceName);
+                K8sDataCollectorV2 collectorV2 = new K8sDataCollectorV2(client);
+                
+                // V2 currently doesn't support kind filtering, collect all
+                SemanticNamespaceModel semanticModel = collectorV2.collectNamespace(
+                        target.namespaceName, target.clusterName);
+                
+                log.info("[V2] Collected semantic model with {} objects", semanticModel.getObjects().size());
+                
+                // Convert semantic to flat for comparison
+                SemanticToFlatAdapter adapter = new SemanticToFlatAdapter();
+                model = adapter.toFlatModel(semanticModel);
+                
+                log.info("[V2] Converted to flat model with {} objects, {} total keys", 
+                         model.getObjects().size(), 
+                         model.getObjects().values().stream()
+                             .mapToInt(obj -> obj.getSpec().size() + obj.getMetadata().size())
+                             .sum());
+                
+                // Debug: log sample keys and values
+                if (!model.getObjects().isEmpty()) {
+                    FlatObjectModel firstObj = model.getObjects().values().iterator().next();
+                    List<String> sampleKeys = firstObj.getSpec().keySet().stream().limit(5)
+                        .collect(java.util.stream.Collectors.toList());
+                    log.info("[V2] Sample keys from {}: {}", firstObj.getName(), sampleKeys);
+                    // Log first value to check if data exists
+                    if (!sampleKeys.isEmpty()) {
+                        String firstKey = sampleKeys.get(0);
+                        String firstValue = firstObj.getSpec().get(firstKey);
+                        log.info("[V2] Sample value for '{}': '{}'", firstKey, firstValue);
+                    }
+                }
             } else {
-                model = collector.collectNamespace(target.namespaceName, target.clusterName);
+                // Use V1 flat collection
+                K8sDataCollector collector = new K8sDataCollector(client);
+                
+                if (request.getKinds() != null && !request.getKinds().isEmpty()) {
+                    model = collector.collectNamespaceByKinds(
+                            target.namespaceName, target.clusterName, request.getKinds());
+                } else {
+                    model = collector.collectNamespace(target.namespaceName, target.clusterName);
+                }
             }
             
             namespaceModels.add(model);
@@ -578,11 +631,25 @@ public class AsyncValidationExecutor {
         if (request.getExportExcel() == null || request.getExportExcel()) {
             updateProgress(jobId, "Generating Excel report", 90, targets.size(), targets.size(), objectsCollected);
             
-            File excelFile = resultsDir.resolve("validation-report.xlsx").toFile();
-            ExcelReportGenerator excelGenerator = new ExcelReportGenerator();
-            excelGenerator.generateReport(namespaceModels, comparisons, excelFile.getAbsolutePath(), validationConfig);
-            
-            log.info("Exported Excel report to {}", excelFile.getAbsolutePath());
+            // Check if this is a CNF checklist request
+            if (request.getCnfChecklistRequest() != null && request.getCnfChecklistRequest() instanceof CNFChecklistRequest) {
+                // Generate CNF-specific Excel report
+                CNFChecklistRequest cnfRequest = (CNFChecklistRequest) request.getCnfChecklistRequest();
+                List<CnfComparison> cnfComparisons = cnfChecklistService.convertToCnfComparison(cnfRequest, comparisons);
+                
+                File cnfExcelFile = resultsDir.resolve("cnf-checklist-validation.xlsx").toFile();
+                CNFChecklistExcelGenerator cnfExcelGenerator = new CNFChecklistExcelGenerator();
+                cnfExcelGenerator.generateReport(cnfRequest, cnfComparisons, cnfExcelFile.getAbsolutePath());
+                
+                log.info("Exported CNF Checklist Excel report to {}", cnfExcelFile.getAbsolutePath());
+            } else {
+                // Generate standard Excel report
+                File excelFile = resultsDir.resolve("validation-report.xlsx").toFile();
+                ExcelReportGenerator excelGenerator = new ExcelReportGenerator();
+                excelGenerator.generateReport(namespaceModels, comparisons, excelFile.getAbsolutePath(), validationConfig);
+                
+                log.info("Exported Excel report to {}", excelFile.getAbsolutePath());
+            }
         }
         
         // Mark job as completed
@@ -793,6 +860,18 @@ public class AsyncValidationExecutor {
         // Mark job as processing
         jobService.startJob(jobId);
         
+        // Determine if semantic V2 should be used based on matching strategy from original CNF request
+        boolean useSemanticV2 = false;
+        if (request.getCnfChecklistRequest() instanceof CNFChecklistRequest) {
+            CNFChecklistRequest cnfRequest = (CNFChecklistRequest) request.getCnfChecklistRequest();
+            useSemanticV2 = cnfRequest.shouldUseSemanticV2();
+            log.info("CNF Checklist async: matchingStrategy='{}', useSemanticV2={}", 
+                    cnfRequest.getMatchingStrategy(), useSemanticV2);
+        } else {
+            // Fallback to feature flag
+            useSemanticV2 = FeatureFlags.getInstance().isUseSemanticComparison();
+        }
+        
         // Load validation config - always use validation-config.yaml as default if not specified
         String configFile = request.getConfigFile();
         if (configFile == null || configFile.isEmpty()) {
@@ -826,14 +905,25 @@ public class AsyncValidationExecutor {
             
             // Collect actual data from K8s cluster using vimName as cluster
             KubernetesClient client = clusterManager.getClient(vimName);
-            K8sDataCollector collector = new K8sDataCollector(client);
-            
             FlatNamespaceModel actualModel;
-            if (request.getKinds() != null && !request.getKinds().isEmpty()) {
-                actualModel = collector.collectNamespaceByKinds(
-                        namespace, vimName, request.getKinds());
+            
+            if (useSemanticV2) {
+                // Use V2 collector for semantic comparison
+                log.info("[V2] Using semantic collector for runtime data (async): {}/{}", vimName, namespace);
+                K8sDataCollectorV2 collectorV2 = new K8sDataCollectorV2(client);
+                SemanticNamespaceModel semanticRuntime = collectorV2.collectNamespace(namespace, vimName);
+                
+                // Convert semantic back to flat for comparison
+                actualModel = SemanticToFlatAdapter.toFlatModel(semanticRuntime);
             } else {
-                actualModel = collector.collectNamespace(namespace, vimName);
+                // Use V1 flat collector
+                K8sDataCollector collector = new K8sDataCollector(client);
+                if (request.getKinds() != null && !request.getKinds().isEmpty()) {
+                    actualModel = collector.collectNamespaceByKinds(
+                            namespace, vimName, request.getKinds());
+                } else {
+                    actualModel = collector.collectNamespace(namespace, vimName);
+                }
             }
             
             objectsCollected += actualModel.getObjects().size();
@@ -857,7 +947,7 @@ public class AsyncValidationExecutor {
             String actualLabel = vimName + "/" + namespace + " (Actual)";
             
             NamespaceComparison comparison;
-            if (FeatureFlags.getInstance().isUseSemanticComparison()) {
+            if (useSemanticV2) {
                 log.info("[V2] Using semantic comparison for CNF checklist async: {}", comparisonKey);
                 comparison = ValidationServiceV2.compareFlat(
                         baselineModel, actualModel,
@@ -883,14 +973,22 @@ public class AsyncValidationExecutor {
         Path resultsDir = jobService.createJobResultsDirectory(jobId);
         log.info("Created results directory: {}", resultsDir);
         
-        // Generate Excel report
-        updateProgress(jobId, "Generating Excel report", 85, baselineMap.size(), baselineMap.size(), objectsCollected);
+        // Convert comparisons to CNF format
+        updateProgress(jobId, "Converting to CNF format", 80, baselineMap.size(), baselineMap.size(), objectsCollected);
         
-        ExcelReportGenerator excelGenerator = new ExcelReportGenerator();
-        String excelFilePath = resultsDir.resolve("cnf-checklist-validation.xlsx").toString();
-        excelGenerator.generateReport(namespaceModels, comparisons, excelFilePath, validationConfig);
+        CNFChecklistRequest cnfRequest = (CNFChecklistRequest) request.getCnfChecklistRequest();
+        List<CnfComparison> cnfComparisons = cnfChecklistService.convertToCnfComparison(cnfRequest, comparisons);
         
-        log.info("Generated Excel report: {}", excelFilePath);
+        log.info("Converted {} namespace comparisons to CNF format", cnfComparisons.size());
+        
+        // Generate CNF Checklist Excel report
+        updateProgress(jobId, "Generating CNF Excel report", 85, baselineMap.size(), baselineMap.size(), objectsCollected);
+        
+        CNFChecklistExcelGenerator cnfExcelGenerator = new CNFChecklistExcelGenerator();
+        String cnfExcelPath = resultsDir.resolve("cnf-checklist-validation.xlsx").toString();
+        cnfExcelGenerator.generateReport(cnfRequest, cnfComparisons, cnfExcelPath);
+        
+        log.info("Generated CNF Checklist Excel report: {}", cnfExcelPath);
         
         // Export JSON results
         updateProgress(jobId, "Exporting JSON results", 95, baselineMap.size(), baselineMap.size(), objectsCollected);
@@ -942,12 +1040,25 @@ public class AsyncValidationExecutor {
             log.info("Processing CNF checklist for {}: {} baseline objects", 
                     namespaceKey, baselineModel.getObjects().size());
             
+            // Use V2 flag from request (determined by matchingStrategy), fallback to feature flag
+            boolean useSemanticV2 = request.shouldUseSemanticV2() || FeatureFlags.getInstance().isUseSemanticComparison();
+            
             // Collect actual data from K8s cluster using vimName as cluster
             KubernetesClient client = clusterManager.getClient(vimName);
-            K8sDataCollector collector = new K8sDataCollector(client);
+            FlatNamespaceModel actualModel;
             
-            // Collect actual namespace data
-            FlatNamespaceModel actualModel = collector.collectNamespace(namespace, vimName);
+            if (useSemanticV2) {
+                // Use V2 collector for semantic comparison
+                log.info("[V2] Using semantic collector for runtime data: {}/{}", vimName, namespace);
+                K8sDataCollectorV2 collectorV2 = new K8sDataCollectorV2(client);
+                SemanticNamespaceModel semanticRuntime = collectorV2.collectNamespace(namespace, vimName);
+                // Convert semantic back to flat for comparison
+                actualModel = SemanticToFlatAdapter.toFlatModel(semanticRuntime);
+            } else {
+                // Use V1 flat collector
+                K8sDataCollector collector = new K8sDataCollector(client);
+                actualModel = collector.collectNamespace(namespace, vimName);
+            }
             
             objectsCollected += actualModel.getObjects().size();
             log.info("Collected {} actual objects from {}/{}", 
@@ -965,8 +1076,6 @@ public class AsyncValidationExecutor {
             String actualLabel = vimName + "/" + namespace + " (Actual)";
             
             NamespaceComparison comparison;
-            // Use V2 flag from request (determined by matchingStrategy), fallback to feature flag
-            boolean useSemanticV2 = request.shouldUseSemanticV2() || FeatureFlags.getInstance().isUseSemanticComparison();
             
             if (useSemanticV2) {
                 log.info("[V2] Using semantic comparison for CNF checklist sync: {} (strategy: {})", 
@@ -990,6 +1099,10 @@ public class AsyncValidationExecutor {
         }
         
         long executionTime = System.currentTimeMillis() - startTime;
+        
+        // Convert comparisons to CNF format
+        List<CnfComparison> cnfComparisons = cnfChecklistService.convertToCnfComparison(request, comparisons);
+        log.info("Converted {} namespace comparisons to CNF format (sync)", cnfComparisons.size());
         
         // Build and return result JSON
         ValidationResultJson result = new ValidationResultJson();
