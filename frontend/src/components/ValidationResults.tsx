@@ -1,6 +1,6 @@
 // ValidationResults Component - Updated for multi-cluster namespace support
 import { Card, Statistic, Table, Tag, Button, Space, Modal, Input, Row, Col } from 'antd';
-import { Download, CheckCircle, AlertCircle, XCircle, Plus, Eye, Search } from 'lucide-react';
+import { Download, CheckCircle, AlertCircle, XCircle, Plus, Eye, Search, EyeOff } from 'lucide-react';
 import type { ValidationResultJson } from '../types';
 import * as XLSX from 'xlsx';
 import { useState } from 'react';
@@ -18,6 +18,7 @@ const getStatusColor = (status: string) => {
     case 'NOK': return 'warning';
     case 'MISSING': return 'error';
     case 'EXTRA': return 'processing';
+    case 'IGNORED': return 'cyan';
     default: return 'default';
   }
 };
@@ -31,6 +32,7 @@ const getStatusIcon = (status: string) => {
     case 'NOK': return <AlertCircle size={16} />;
     case 'MISSING': return <XCircle size={16} />;
     case 'EXTRA': return <Plus size={16} />;
+    case 'IGNORED': return <EyeOff size={16} />;
     default: return null;
   }
 };
@@ -405,6 +407,7 @@ export const ValidationResults = ({ result }: ValidationResultsProps) => {
         { text: 'Different', value: 'DIFFERENT' },
         { text: 'Missing', value: 'MISSING' },
         { text: 'Extra', value: 'EXTRA' },
+        { text: 'Ignored', value: 'IGNORED' },
       ],
       onFilter: (value: any, record: any) => {
         const statusObj = record[ns];
@@ -424,6 +427,7 @@ export const ValidationResults = ({ result }: ValidationResultsProps) => {
         // - IDENTICAL → OK
         // - MISSING → MISSING (object exists in baseline but not in target)
         // - EXTRA → EXTRA (object exists in target but not in baseline)
+        // - IGNORED → IGNORED (field ignored by ignore rules)
         // - DIFFERENT → DIFF (n) (field value differences)
         const displayText = status === 'BASELINE' 
           ? 'BASE' 
@@ -433,6 +437,8 @@ export const ValidationResults = ({ result }: ValidationResultsProps) => {
           ? 'MISSING'
           : status === 'EXTRA'
           ? 'EXTRA'
+          : status === 'IGNORED'
+          ? 'IGNORED'
           : differenceCount > 0 ? `DIFF (${differenceCount})` : 'DIFF';
         
         // Truncate long content in tooltip to prevent UI issues
@@ -560,49 +566,76 @@ export const ValidationResults = ({ result }: ValidationResultsProps) => {
 
   return (
     <>
-      {/* Summary Statistics - Grid Layout */}
-      <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
+      {/* Summary Statistics - Improved Layout */}
+      <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
         <Col span={24}>
-          <p><strong>Baseline:</strong> {baselineNamespace}</p>
+          <div style={{ 
+            padding: '12px 16px', 
+            background: '#f0f5ff', 
+            borderRadius: 6,
+            borderLeft: '4px solid #1890ff',
+            marginBottom: 16
+          }}>
+            <strong style={{ fontSize: 14, color: '#1890ff' }}>Baseline:</strong>
+            <span style={{ marginLeft: 8, fontSize: 14, color: '#595959' }}>{baselineNamespace}</span>
+          </div>
         </Col>
-        <Col span={6}>
-          <Card size="small">
-            <Statistic 
-              title="Total" 
-              value={totalObjects}
-              valueStyle={{ color: '#1890ff' }}
-            />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card size="small">
-            <Statistic 
-              title="OK" 
-              value={okCount}
-              valueStyle={{ color: '#3f8600' }}
-            />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card size="small">
-            <Statistic 
-              title="NOK" 
-              value={nokCount}
-              valueStyle={{ color: nokCount > 0 ? '#cf1322' : undefined }}
-            />
-          </Card>
-        </Col>
-        <Col span={6}>
-          <Card size="small">
-            <Statistic 
-              title="OK Rate" 
-              value={okPercentage}
-              suffix="%"
-              valueStyle={{ 
-                color: parseFloat(okPercentage) >= 80 ? '#3f8600' : parseFloat(okPercentage) >= 50 ? '#faad14' : '#cf1322',
-                fontSize: '24px'
-              }}
-            />
+        
+        {/* Statistics Cards - Grouped in one card */}
+        <Col span={24}>
+          <Card 
+            size="small"
+            title={<span style={{ fontSize: 13, fontWeight: 600, color: '#595959' }}>Validation Summary</span>}
+            headStyle={{ minHeight: 40, padding: '8px 16px', background: '#fafafa' }}
+            bodyStyle={{ padding: '16px 20px' }}
+          >
+            <Row gutter={[24, 16]} align="middle">
+              <Col xs={24} sm={6}>
+                <Statistic 
+                  title={<span style={{ fontSize: 13 }}>Total Objects</span>}
+                  value={totalObjects}
+                  valueStyle={{ color: '#1890ff', fontSize: 28, fontWeight: 600 }}
+                />
+              </Col>
+              <Col xs={24} sm={6}>
+                <Statistic 
+                  title={<span style={{ fontSize: 13 }}>OK</span>}
+                  value={okCount}
+                  valueStyle={{ color: '#3f8600', fontSize: 28, fontWeight: 600 }}
+                />
+              </Col>
+              <Col xs={24} sm={6}>
+                <Statistic 
+                  title={<span style={{ fontSize: 13 }}>NOK</span>}
+                  value={nokCount}
+                  valueStyle={{ color: nokCount > 0 ? '#cf1322' : '#8c8c8c', fontSize: 28, fontWeight: 600 }}
+                />
+              </Col>
+              <Col xs={24} sm={6}>
+                <div style={{
+                  padding: '16px 20px',
+                  background: parseFloat(okPercentage) >= 80 
+                    ? 'linear-gradient(135deg, #f6ffed 0%, #f0f9ff 100%)' 
+                    : parseFloat(okPercentage) >= 50 
+                    ? 'linear-gradient(135deg, #fffbf0 0%, #fff7e6 100%)' 
+                    : 'linear-gradient(135deg, #fff1f0 0%, #ffebee 100%)',
+                  borderRadius: 8,
+                  border: `2px solid ${parseFloat(okPercentage) >= 80 ? '#b7eb8f' : parseFloat(okPercentage) >= 50 ? '#ffd591' : '#ffa39e'}`,
+                  textAlign: 'center'
+                }}>
+                  <Statistic 
+                    title={<span style={{ fontSize: 13, fontWeight: 600 }}>OK Rate</span>}
+                    value={okPercentage}
+                    suffix="%"
+                    valueStyle={{ 
+                      color: parseFloat(okPercentage) >= 80 ? '#3f8600' : parseFloat(okPercentage) >= 50 ? '#faad14' : '#cf1322',
+                      fontSize: 32,
+                      fontWeight: 'bold'
+                    }}
+                  />
+                </div>
+              </Col>
+            </Row>
           </Card>
         </Col>
       </Row>
@@ -693,6 +726,12 @@ export const ValidationResults = ({ result }: ValidationResultsProps) => {
                 field.values.set(rightNs, value);
                 field.statuses.set(leftNs, 'MATCH');
                 field.statuses.set(rightNs, 'MATCH');
+              } else if (item.status === 'IGNORED') {
+                // Field is ignored - mark both sides as IGNORED with (ignored) value
+                field.values.set(leftNs, '(ignored)');
+                field.values.set(rightNs, '(ignored)');
+                field.statuses.set(leftNs, 'IGNORED');
+                field.statuses.set(rightNs, 'IGNORED');
               } else if (item.status === 'DIFFERENT' || item.status === 'VALUE_MISMATCH') {
                 field.values.set(leftNs, String(item.leftValue !== undefined ? item.leftValue : ''));
                 field.values.set(rightNs, String(item.rightValue !== undefined ? item.rightValue : ''));
@@ -904,8 +943,8 @@ export const ValidationResults = ({ result }: ValidationResultsProps) => {
               let nsStatus = field.statuses.get(ns) || 'MISSING';
               const nsValue = field.values.get(ns) || '';
               
-              // If object doesn't exist in baseline
-              if (!objectExistsInBaseline) {
+              // If object doesn't exist in baseline AND field is not IGNORED
+              if (!objectExistsInBaseline && nsStatus !== 'IGNORED') {
                 if (ns === baselineNs) {
                   // Baseline namespace - field is MISSING
                   nsStatus = 'MISSING';
@@ -926,13 +965,18 @@ export const ValidationResults = ({ result }: ValidationResultsProps) => {
                 allValues.add(nsValue);
               }
               
-              // Check for MISSING, EXTRA, or DIFFERENT status
+              // Check for MISSING, EXTRA, IGNORED, or DIFFERENT status
               if (nsStatus === 'MISSING') {
                 if (overallStatus !== 'EXTRA') {
                   overallStatus = 'MISSING';
                 }
               } else if (nsStatus === 'EXTRA') {
                 overallStatus = 'EXTRA';
+              } else if (nsStatus === 'IGNORED') {
+                // IGNORED status should be preserved
+                if (overallStatus === 'MATCH') {
+                  overallStatus = 'IGNORED';
+                }
               } else if (nsStatus === 'DIFFERENT' && overallStatus !== 'MISSING' && overallStatus !== 'EXTRA') {
                 overallStatus = 'DIFFERENT';
               }

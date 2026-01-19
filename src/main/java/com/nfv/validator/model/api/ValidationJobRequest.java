@@ -83,6 +83,13 @@ public class ValidationJobRequest {
     private Boolean exportExcel;
     
     /**
+     * Custom ignore fields for this validation (optional)
+     * These will be merged with default ignore rules from config
+     */
+    @JsonProperty("ignoreFields")
+    private List<String> ignoreFields;
+    
+    /**
      * CNF Checklist request (transient, used internally)
      */
     @com.fasterxml.jackson.annotation.JsonIgnore

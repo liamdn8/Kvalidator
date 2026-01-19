@@ -84,6 +84,34 @@ export const validationApi = {
     return data;
   },
 
+  // Upload and parse JSON file
+  uploadJsonFile: async (file: File): Promise<{ success: boolean; message: string; itemCount: number; items: any[] }> => {
+    const { data } = await api.post('/cnf-checklist/upload/json', file, {
+      headers: {
+        'Content-Type': 'application/octet-stream',
+      },
+    });
+    return data;
+  },
+
+  // Upload and parse Excel file
+  uploadExcelFile: async (file: File): Promise<{ success: boolean; message: string; itemCount: number; items: any[] }> => {
+    const { data } = await api.post('/cnf-checklist/upload/excel', file, {
+      headers: {
+        'Content-Type': 'application/octet-stream',
+      },
+    });
+    return data;
+  },
+
+  // Download Excel template
+  downloadExcelTemplate: async (): Promise<Blob> => {
+    const { data } = await api.get('/cnf-checklist/template/excel', {
+      responseType: 'blob',
+    });
+    return data;
+  },
+
   // Poll job status until completed
   pollJobStatus: async (
     jobId: string,

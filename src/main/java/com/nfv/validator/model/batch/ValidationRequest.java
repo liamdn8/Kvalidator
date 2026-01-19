@@ -75,6 +75,12 @@ public class ValidationRequest {
     private boolean verbose;
     
     /**
+     * Custom ignore fields for this specific validation request (optional)
+     * These will be merged with default ignore rules from config
+     */
+    private List<String> ignoreFields;
+    
+    /**
      * Validate the request parameters
      */
     public void validate() throws IllegalArgumentException {

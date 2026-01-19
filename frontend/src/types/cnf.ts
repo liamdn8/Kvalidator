@@ -15,6 +15,7 @@ export interface CNFChecklistRequest {
   items: CNFChecklistItem[];
   description?: string;
   matchingStrategy?: 'exact' | 'value' | 'identity'; // Default: 'value'
+  ignoreFields?: string[]; // Custom ignore fields for this validation
 }
 
 /**
@@ -26,7 +27,7 @@ export interface CnfChecklistResult {
   fieldKey: string;
   baselineValue: string;
   actualValue: string | null;
-  status: 'MATCH' | 'DIFFERENT' | 'MISSING_IN_RUNTIME' | 'ERROR';
+  status: 'MATCH' | 'DIFFERENT' | 'MISSING_IN_RUNTIME' | 'IGNORED' | 'ERROR';
   message?: string;
 }
 
@@ -35,6 +36,7 @@ export interface CnfSummary {
   matchCount: number;
   differenceCount: number;
   missingCount: number;
+  ignoredCount: number;
   errorCount: number;
 }
 
@@ -49,6 +51,7 @@ export interface CnfOverallSummary {
   totalVimNamespaces: number;
   totalFields: number;
   totalMatches: number;
+  totalIgnored: number;
   totalDifferences: number;
   totalMissing: number;
   totalErrors: number;

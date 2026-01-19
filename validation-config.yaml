@@ -1,23 +1,51 @@
 ---
+# KValidator Ignore Fields Configuration
+# 
+# Supported patterns:
+# - "field.name"        => Exact match + auto-prefix (matches "field.name", "field.name.sub", "field.name[0]")
+# - "field.name*"       => Prefix match (matches "field.name", "field.name.sub", "field.name[0]")  
+# - "*field.name"       => Suffix match (matches "any.field.name", "prefix.field.name")
+# - "*field.name*"      => Contains match (matches any path containing "field.name")
+#
+# Examples:
+# - "metadata.annotations" will ignore all annotation fields
+# - "*last-applied-configuration" will ignore any field ending with this name
+# - "*kubectl*" will ignore any field containing "kubectl"
+
 ignoreFields:
+# Kubernetes metadata fields (always changing)
 - "metadata.creationTimestamp"
 - "metadata.generation"
 - "metadata.resourceVersion"
 - "metadata.uid"
 - "metadata.selfLink"
 - "metadata.managedFields"
-- "metadata.namespace"
+
+# Annotations - ignore all by default (can be customized per validation)
 - "metadata.annotations"
+
+# Status fields (runtime state, not configuration)
 - "status"
-- "spec.template.metadata.creationTimestamp"
+
+# Service-specific dynamic fields
 - "spec.clusterIP"
 - "spec.clusterIPs"
 - "spec.ipFamilies"
 - "spec.ipFamilyPolicy"
+
+# Pod template metadata
+- "spec.template.metadata.creationTimestamp"
+- "spec.template.metadata.annotations"
+
+# Pod spec runtime fields
 - "spec.template.spec.nodeName"
 - "spec.template.spec.restartPolicy"
 - "spec.template.spec.dnsPolicy"
 - "spec.template.spec.schedulerName"
 - "spec.template.spec.securityContext"
 - "spec.template.spec.enableServiceLinks"
-- "spec.data"
+
+# ConfigMap/Secret data (if you want to ignore data content)
+# Uncomment if needed:
+# - "spec.data"
+# - "data"

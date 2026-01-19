@@ -31,10 +31,12 @@ const mapCnfToValidationResult = (cnfResult: CnfValidationResultJson): Validatio
       }
       
       // Map CNF status to standard comparison status
-      let comparisonStatus: 'MATCH' | 'DIFFERENT' | 'ONLY_IN_LEFT' | 'ONLY_IN_RIGHT' | 'VALUE_MISMATCH';
+      let comparisonStatus: 'MATCH' | 'DIFFERENT' | 'ONLY_IN_LEFT' | 'ONLY_IN_RIGHT' | 'VALUE_MISMATCH' | 'IGNORED';
       
       if (item.status === 'MATCH') {
         comparisonStatus = 'MATCH';
+      } else if (item.status === 'IGNORED') {
+        comparisonStatus = 'IGNORED';
       } else if (item.status === 'MISSING_IN_RUNTIME') {
         comparisonStatus = 'ONLY_IN_LEFT'; // Exists in baseline but not in runtime
       } else if (item.status === 'DIFFERENT') {
@@ -47,9 +49,10 @@ const mapCnfToValidationResult = (cnfResult: CnfValidationResultJson): Validatio
         key: item.fieldKey,
         path: item.fieldKey,
         leftValue: item.baselineValue,
-        rightValue: item.actualValue,
+        rightValue: item.status === 'IGNORED' ? '(ignored)' : item.actualValue,
         status: comparisonStatus,
-        match: item.status === 'MATCH'
+        match: item.status === 'MATCH',
+        ignored: item.status === 'IGNORED'
       });
     });
     
@@ -60,7 +63,8 @@ const mapCnfToValidationResult = (cnfResult: CnfValidationResultJson): Validatio
       const firstItem = cnfComp.items.find(i => `${i.kind}/${i.objectName}` === objectKey);
       if (!firstItem) return;
       
-      const differenceCount = items.filter(i => i.status !== 'MATCH').length;
+      // Count differences (exclude MATCH and IGNORED)
+      const differenceCount = items.filter(i => !i.match && !i.ignored).length;
       
       objectComparisons[objectKey] = {
         objectId: objectKey,

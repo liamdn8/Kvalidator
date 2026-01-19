@@ -16,26 +16,26 @@ interface ValidationConfigEditorProps {
 
 // Default ignore fields from validation-config.yaml
 const DEFAULT_IGNORE_FIELDS = [
-  'metadata.creationTimestamp',
-  'metadata.generation',
-  'metadata.resourceVersion',
-  'metadata.uid',
-  'metadata.selfLink',
-  'metadata.managedFields',
+  // 'metadata.creationTimestamp.*',
+  // 'metadata.generation.*',
+  // 'metadata.resourceVersion.*',
+  // 'metadata.uid.*',
+  // 'metadata.selfLink.*',
+  // 'metadata.managedFields.*',
   'metadata.namespace',
-  'metadata.annotations',
+  // 'metadata.annotations.*',
   'status',
-  'spec.template.metadata.creationTimestamp',
-  'spec.clusterIP',
-  'spec.clusterIPs',
-  'spec.ipFamilies',
-  'spec.ipFamilyPolicy',
-  'spec.template.spec.nodeName',
-  'spec.template.spec.restartPolicy',
-  'spec.template.spec.dnsPolicy',
-  'spec.template.spec.schedulerName',
-  'spec.template.spec.securityContext',
-  'spec.template.spec.enableServiceLinks',
+  // 'spec.template.metadata.creationTimestamp.*',
+  // 'spec.clusterIP.*',
+  // 'spec.clusterIPs.*',
+  // 'spec.ipFamilies.*',
+  // 'spec.ipFamilyPolicy.*',
+  // 'spec.template.spec.nodeName.*',
+  // 'spec.template.spec.restartPolicy.*',
+  // 'spec.template.spec.dnsPolicy.*',
+  // 'spec.template.spec.schedulerName.*',
+  // 'spec.template.spec.securityContext.*',
+  // 'spec.template.spec.enableServiceLinks.*',
 ];
 
 type ViewMode = 'table' | 'yaml';
@@ -46,6 +46,7 @@ export const ValidationConfigEditor = ({ onConfigChange, showTitle = true, onFie
   const [loading, setLoading] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [yamlContent, setYamlContent] = useState('');
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
 
   useEffect(() => {
     loadConfig();
@@ -71,14 +72,18 @@ export const ValidationConfigEditor = ({ onConfigChange, showTitle = true, onFie
       setConfig(data);
       onConfigChange?.(data);
     } catch (error) {
-      console.error('Failed to load config:', error);
-      message.error('Failed to load validation config');
+      console.error('Failed to load config from API, using defaults:', error);
+      // If API fails, use default ignore fields
+      const defaultConfig = { ignoreFields: [...DEFAULT_IGNORE_FIELDS] };
+      setConfig(defaultConfig);
+      onConfigChange?.(defaultConfig);
+      message.info('Using default ignore rules (API not available)');
     } finally {
       setLoading(false);
     }
   };
 
-  const addIgnoreField = async () => {
+  const addIgnoreField = () => {
     const fieldPath = newField.trim();
     if (!fieldPath) {
       message.warning('Please enter a field path');
@@ -90,54 +95,39 @@ export const ValidationConfigEditor = ({ onConfigChange, showTitle = true, onFie
       return;
     }
 
-    try {
-      setLoading(true);
-      const response = await fetch('/kvalidator/api/config/ignore-field', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fieldPath }),
-      });
-
-      if (!response.ok) throw new Error('Failed to add field');
-
-      const updatedConfig = {
-        ...config,
-        ignoreFields: [...config.ignoreFields, fieldPath].sort(),
-      };
-      setConfig(updatedConfig);
-      onConfigChange?.(updatedConfig);
-      setNewField('');
-      message.success(`Added ignore field: ${fieldPath}`);
-    } catch (error) {
-      console.error('Failed to add field:', error);
-      message.error('Failed to add ignore field');
-    } finally {
-      setLoading(false);
-    }
+    // Update state only - no API call
+    // Ignore fields will be sent in validation request payload
+    const updatedConfig = {
+      ...config,
+      ignoreFields: [...config.ignoreFields, fieldPath].sort(),
+    };
+    setConfig(updatedConfig);
+    onConfigChange?.(updatedConfig);
+    setNewField('');
+    message.success(`Added ignore field: ${fieldPath}`);
   };
 
-  const removeIgnoreField = async (fieldPath: string) => {
-    try {
-      setLoading(true);
-      const response = await fetch(`/kvalidator/api/config/ignore-field?fieldPath=${encodeURIComponent(fieldPath)}`, {
-        method: 'DELETE',
-      });
+  const removeIgnoreField = (fieldPath: string) => {
+    // Update state only - no API call
+    // Ignore fields will be sent in validation request payload
+    const updatedConfig = {
+      ...config,
+      ignoreFields: config.ignoreFields.filter(f => f !== fieldPath),
+    };
+    setConfig(updatedConfig);
+    onConfigChange?.(updatedConfig);
+    message.success(`Removed ignore field: ${fieldPath}`);
+  };
 
-      if (!response.ok) throw new Error('Failed to remove field');
-
-      const updatedConfig = {
-        ...config,
-        ignoreFields: config.ignoreFields.filter(f => f !== fieldPath),
-      };
-      setConfig(updatedConfig);
-      onConfigChange?.(updatedConfig);
-      message.success(`Removed ignore field: ${fieldPath}`);
-    } catch (error) {
-      console.error('Failed to remove field:', error);
-      message.error('Failed to remove ignore field');
-    } finally {
-      setLoading(false);
-    }
+  const removeMultipleFields = (fieldPaths: string[]) => {
+    const updatedConfig = {
+      ...config,
+      ignoreFields: config.ignoreFields.filter(f => !fieldPaths.includes(f)),
+    };
+    setConfig(updatedConfig);
+    onConfigChange?.(updatedConfig);
+    setSelectedRowKeys([]);
+    message.success(`Removed ${fieldPaths.length} ignore field(s)`);
   };
 
   const exportConfig = async () => {
@@ -191,23 +181,12 @@ export const ValidationConfigEditor = ({ onConfigChange, showTitle = true, onFie
     return false; // Prevent default upload behavior
   };
 
-  const resetToDefault = async () => {
-    try {
-      setLoading(true);
-      const response = await fetch('/kvalidator/api/config/reset', {
-        method: 'POST',
-      });
-
-      if (!response.ok) throw new Error('Failed to reset config');
-
-      await loadConfig();
-      message.success('Config reset to default');
-    } catch (error) {
-      console.error('Failed to reset config:', error);
-      message.error('Failed to reset config');
-    } finally {
-      setLoading(false);
-    }
+  const resetToDefault = () => {
+    // Reset to default ignore fields without API call
+    const defaultConfig = { ignoreFields: [...DEFAULT_IGNORE_FIELDS] };
+    setConfig(defaultConfig);
+    onConfigChange?.(defaultConfig);
+    message.success('Config reset to default ignore rules');
   };
 
   const commonIgnoreFields = [
@@ -218,86 +197,84 @@ export const ValidationConfigEditor = ({ onConfigChange, showTitle = true, onFie
     { value: 'spec.template.spec.serviceAccountName', description: 'Service account' },
   ];
 
-  const defaultTableColumns = [
+  // Merged table columns (default + custom)
+  const tableColumns = [
     {
       title: 'Field Path',
       dataIndex: 'field',
       key: 'field',
-      render: (text: string) => (
-        <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#666' }}>{text}</span>
+      render: (text: string, record: any) => (
+        <span style={{ 
+          fontFamily: 'monospace', 
+          fontSize: 12,
+          color: record.isDefault ? '#666' : '#000'
+        }}>
+          {text}
+        </span>
       ),
     },
     {
       title: 'Type',
       key: 'type',
       width: 100,
-      render: () => <Tag color="blue">Default</Tag>,
-    },
-  ];
-
-  const customTableColumns = [
-    {
-      title: 'Field Path',
-      dataIndex: 'field',
-      key: 'field',
-      render: (text: string) => (
-        <span style={{ fontFamily: 'monospace', fontSize: 12 }}>{text}</span>
+      render: (_: any, record: any) => (
+        <Tag color={record.isDefault ? 'blue' : 'green'}>
+          {record.isDefault ? 'Default' : 'Custom'}
+        </Tag>
       ),
-    },
-    {
-      title: 'Type',
-      key: 'type',
-      width: 100,
-      render: () => <Tag color="green">Custom</Tag>,
     },
     {
       title: 'Action',
       key: 'action',
       width: 80,
       render: (_: any, record: any) => (
-        <Popconfirm
-          title="Remove this ignore rule?"
-          onConfirm={() => removeIgnoreField(record.field)}
-          okText="Remove"
-          cancelText="Cancel"
-        >
-          <Button 
-            type="text" 
-            danger 
-            size="small"
-            icon={<Trash2 size={14} />}
-            disabled={loading}
-          />
-        </Popconfirm>
+        record.isDefault ? (
+          <Tag color="blue">Read-only</Tag>
+        ) : (
+          <Popconfirm
+            title="Remove this ignore rule?"
+            onConfirm={() => removeIgnoreField(record.field)}
+            okText="Remove"
+            cancelText="Cancel"
+          >
+            <Button 
+              type="text" 
+              danger 
+              size="small"
+              icon={<Trash2 size={14} />}
+              disabled={loading}
+            />
+          </Popconfirm>
+        )
       ),
     },
   ];
 
-  const renderTableView = () => (
-    <div>
-      {/* Default Rules (Read-only) */}
-      <div style={{ marginBottom: 24 }}>
-        <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontWeight: 500 }}>Default Rules ({DEFAULT_IGNORE_FIELDS.length})</span>
-          <Tag color="blue">Read-only</Tag>
-        </div>
-        <Table
-          size="small"
-          dataSource={DEFAULT_IGNORE_FIELDS.sort().map(field => ({ field }))}
-          columns={defaultTableColumns}
-          pagination={{ pageSize: 10, size: 'small' }}
-          rowKey="field"
-        />
-      </div>
+  const renderTableView = () => {
+    // Merge default and custom fields with metadata
+    const allFieldsData = [
+      ...DEFAULT_IGNORE_FIELDS.map(field => ({ field, isDefault: true })),
+      ...customFields.map(field => ({ field, isDefault: false }))
+    ].sort((a, b) => a.field.localeCompare(b.field));
 
-      {/* Custom Rules (Editable) */}
+    // Only custom fields can be selected for deletion
+    const selectableData = allFieldsData.filter(item => !item.isDefault);
+    
+    const rowSelection = {
+      selectedRowKeys,
+      onChange: (selectedKeys: React.Key[]) => {
+        setSelectedRowKeys(selectedKeys as string[]);
+      },
+      getCheckboxProps: (record: any) => ({
+        disabled: record.isDefault, // Default fields cannot be selected
+      }),
+    };
+
+    const hasSelected = selectedRowKeys.length > 0;
+
+    return (
       <div>
-        <div style={{ marginBottom: 12, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <span style={{ fontWeight: 500 }}>Custom Rules ({customFields.length})</span>
-          <Tag color="green">Editable</Tag>
-        </div>
-        
-        {/* Add new field */}
+        {/* Add new field section */}
         <Space.Compact style={{ width: '100%', marginBottom: 12 }}>
           <Input
             placeholder="e.g., spec.replicas, metadata.labels.app"
@@ -312,7 +289,7 @@ export const ValidationConfigEditor = ({ onConfigChange, showTitle = true, onFie
             onClick={addIgnoreField}
             loading={loading}
           >
-            Add
+            Add Rule
           </Button>
         </Space.Compact>
 
@@ -336,17 +313,56 @@ export const ValidationConfigEditor = ({ onConfigChange, showTitle = true, onFie
           ))}
         </Space>
 
+        {/* Bulk actions */}
+        {hasSelected && (
+          <div style={{ marginBottom: 16 }}>
+            <Space>
+              <span style={{ fontSize: 12, color: '#666' }}>
+                Selected: {selectedRowKeys.length} rule(s)
+              </span>
+              <Popconfirm
+                title={`Remove ${selectedRowKeys.length} selected rule(s)?`}
+                onConfirm={() => removeMultipleFields(selectedRowKeys)}
+                okText="Remove"
+                cancelText="Cancel"
+              >
+                <Button 
+                  type="primary" 
+                  danger 
+                  size="small"
+                  icon={<Trash2 size={14} />}
+                >
+                  Remove Selected
+                </Button>
+              </Popconfirm>
+              <Button 
+                size="small"
+                onClick={() => setSelectedRowKeys([])}
+              >
+                Clear Selection
+              </Button>
+              <Button 
+                size="small"
+                onClick={() => setSelectedRowKeys(selectableData.map(item => item.field))}
+              >
+                Select All Custom Rules
+              </Button>
+            </Space>
+          </div>
+        )}
+
+        {/* Merged table */}
         <Table
           size="small"
-          dataSource={customFields.map(field => ({ field }))}
-          columns={customTableColumns}
-          pagination={false}
+          rowSelection={rowSelection}
+          dataSource={allFieldsData}
+          columns={tableColumns}
+          pagination={{ pageSize: 15, size: 'small', showSizeChanger: true, showTotal: (total) => `Total ${total} rules` }}
           rowKey="field"
-          locale={{ emptyText: 'No custom rules. Add some rules above.' }}
         />
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderYamlView = () => (
     <div>

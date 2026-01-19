@@ -97,6 +97,7 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
     // Calculate overall statistics
     let totalFields = 0;
     let totalMatches = 0;
+    let totalIgnored = 0;
     let totalDifferences = 0;
     let totalMissing = 0;
     let totalObjects = 0;
@@ -112,14 +113,17 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
         const fieldCount = result.summary.totalFields;
         const matchCount = result.summary.totalMatches;
         const diffCount = result.summary.totalDifferences;
-        
+        const ignoredCount = result.summary.totalIgnored || 0;
         totalFields += fieldCount;
         totalMatches += matchCount;
         totalDifferences += diffCount;
+        totalIgnored += ignoredCount;
         
         // Calculate object-level statistics
+        // An object is considered "matched" only if ALL its fields match or are ignored
+        // Formula: Object OK when (MATCH + IGNORED) = total fields
         const objectsSet = new Set<string>();
-        const objectStatus = new Map<string, boolean>();
+        const objectFieldCounts = new Map<string, { total: number; matched: number; ignored: number }>();
         
         result.results.forEach((nsResult: any) => {
           const nsLabel = `${nsResult.vimName}/${nsResult.namespace}`;
@@ -128,10 +132,17 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
             const objectKey = `${item.kind}/${item.objectName}`;
             objectsSet.add(objectKey);
             
+            // Track field counts per object
+            if (!objectFieldCounts.has(objectKey)) {
+              objectFieldCounts.set(objectKey, { total: 0, matched: 0, ignored: 0 });
+            }
+            const counts = objectFieldCounts.get(objectKey)!;
+            counts.total++;
+            
             if (item.status === 'MATCH') {
-              objectStatus.set(objectKey, objectStatus.get(objectKey) !== false);
-            } else {
-              objectStatus.set(objectKey, false);
+              counts.matched++;
+            } else if (item.status === 'IGNORED') {
+              counts.ignored++;
             }
             
             // Count missing items
@@ -139,8 +150,8 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
               totalMissing++;
             }
             
-            // Add to detail items (only non-MATCH)
-            if (item.status !== 'MATCH') {
+            // Add to detail items (only non-MATCH and non-IGNORED)
+            if (item.status !== 'MATCH' && item.status !== 'IGNORED') {
               allDetailItems.push({
                 namespace: nsLabel,
                 kind: item.kind || '',
@@ -155,10 +166,14 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
           });
         });
         
+        // Count objects where (MATCH + IGNORED) = total fields
         const nsObjects = objectsSet.size;
-        const nsMatchedObjects = Array.from(objectStatus.values()).filter(v => v).length;
+        const nsMatchedObjects = Array.from(objectFieldCounts.values())
+          .filter(counts => (counts.matched + counts.ignored) === counts.total && counts.total > 0)
+          .length;
         const objectMatchRate = nsObjects > 0 ? parseFloat(((nsMatchedObjects / nsObjects) * 100).toFixed(1)) : 0;
-        const fieldMatchRate = fieldCount > 0 ? parseFloat(((matchCount / fieldCount) * 100).toFixed(1)) : 0;
+        // Field Match Rate: (MATCH + IGNORED) / total fields
+        const fieldMatchRate = fieldCount > 0 ? parseFloat((((matchCount + ignoredCount) / fieldCount) * 100).toFixed(1)) : 0;
         
         totalObjects += nsObjects;
         totalMatchedObjects += nsMatchedObjects;
@@ -179,12 +194,13 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
           objMatchRate: objectMatchRate,
           fields: fieldCount,
           fieldMatches: matchCount,
+          ignored: ignoredCount,
           fieldMatchRate: fieldMatchRate
         });
       }
     });
     
-    const passRate = totalFields > 0 ? parseFloat(((totalMatches / totalFields) * 100).toFixed(1)) : 0;
+    const passRate = totalFields > 0 ? parseFloat(((totalMatches / (totalFields - totalIgnored)) * 100).toFixed(1)) : 0;
     const objectMatchRate = totalObjects > 0 ? parseFloat(((totalMatchedObjects / totalObjects) * 100).toFixed(1)) : 0;
     
     // Sheet 1: Summary - Per-namespace validation results
@@ -198,11 +214,12 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
       ['Overall Object Match Rate:', `${objectMatchRate}%`],
       ['Total Fields Validated:', totalFields],
       ['Total Field Matches:', totalMatches],
+      ['Total Ignored Fields:', totalIgnored],
       ['Overall Field Match Rate:', `${passRate}%`],
       [],
       [],
       ['VALIDATION RESULTS'],
-      ['Validation Name', 'Status', 'Result', 'Objects', 'Obj Matches', 'Obj Match Rate (%)', 'Fields', 'Field Matches', 'Field Match Rate (%)']
+      ['Validation Name', 'Status', 'Result', 'Objects', 'Obj Matches', 'Obj Match Rate (%)', 'Fields', 'Field Matches', 'Ignored', 'Field Match Rate (%)']
     ];
     
     // Add data rows
@@ -216,17 +233,18 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
         row.objMatchRate,
         row.fields,
         row.fieldMatches,
+        row.ignored || 0,
         row.fieldMatchRate
       ]);
     });
     
     const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
     
-    // Add auto-filter to the table (header is at row 13, 0-indexed)
-    const tableStartRow = 13;
+    // Add auto-filter to the table (header is at row 14, 0-indexed because we added one more row)
+    const tableStartRow = 14;
     const tableEndRow = tableStartRow + summaryResults.length;
     summarySheet['!autofilter'] = { 
-      ref: `A${tableStartRow + 1}:I${tableEndRow + 1}` 
+      ref: `A${tableStartRow + 1}:J${tableEndRow + 1}` 
     };
     
     // Set column widths for Summary sheet
@@ -239,6 +257,7 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
       { wch: 18 }, // Obj Match Rate (%)
       { wch: 10 }, // Fields
       { wch: 14 }, // Field Matches
+      { wch: 10 }, // Ignored
       { wch: 20 }  // Field Match Rate (%)
     ];
     
@@ -311,6 +330,7 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
     
     let totalFields = 0;
     let totalMatches = 0;
+    let totalIgnored = 0;
     let totalDifferences = 0;
     let completedJobs = 0;
 
@@ -325,6 +345,7 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
       const fieldCount = result.summary.totalFields;
       const matchCount = result.summary.totalMatches;
       const diffCount = result.summary.totalDifferences;
+      const ignoredCount = result.summary.totalIgnored || 0;
       const isOk = diffCount === 0;
       const okRate = fieldCount > 0 ? ((matchCount / fieldCount) * 100) : 0;
       
@@ -332,7 +353,7 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
       totalFields += fieldCount;
       totalMatches += matchCount;
       totalDifferences += diffCount;
-
+      totalIgnored += (result.summary.totalIgnored || 0);
       // Get namespace name
       const namespaceName = result.results.length > 0 
         ? `${result.results[0].vimName}/${result.results[0].namespace}`
@@ -402,6 +423,7 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
                 <th>Result</th>
                 <th>Fields</th>
                 <th>Matches</th>
+                <th>Ignored</th>
                 <th>Differences</th>
                 <th>Match Rate</th>
               </tr>
@@ -410,6 +432,7 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
                 <td><span class="status-badge ${isOk ? 'status-ok' : 'status-nok'}">${isOk ? 'OK' : 'NOK'}</span></td>
                 <td>${fieldCount}</td>
                 <td style="color: #52c41a">${matchCount}</td>
+                <td style="color: rgb(75, 152, 252)">${ignoredCount}</td>
                 <td style="color: ${diffCount > 0 ? '#ff4d4f' : '#52c41a'}">${diffCount}</td>
                 <td style="color: ${okRate === 100 ? '#52c41a' : okRate >= 80 ? '#faad14' : '#ff4d4f'}">${okRate.toFixed(2)}%</td>
               </tr>
@@ -422,7 +445,7 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
       `;
     }).filter(s => s !== '').join('');
 
-    const overallMatchRate = totalFields > 0 ? ((totalMatches / totalFields) * 100) : 0;
+    const overallMatchRate = totalFields > 0 ? ((totalMatches / (totalFields - totalIgnored))) * 100 : 0;
 
     return `<!DOCTYPE html>
 <html lang="en">
@@ -540,6 +563,10 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
           <div class="stat-value" style="color: #52c41a">${totalMatches}</div>
         </div>
         <div class="stat-card">
+          <div class="stat-label">Ignored</div>
+          <div class="stat-value" style="color: rgb(75, 152, 252)">${totalIgnored}</div>
+        </div>
+        <div class="stat-card">
           <div class="stat-label">Differences</div>
           <div class="stat-value" style="color: ${totalDifferences > 0 ? '#ff4d4f' : '#52c41a'}">${totalDifferences}</div>
         </div>
@@ -579,6 +606,7 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
       // Calculate statistics
       let totalFields = 0;
       let totalMatches = 0;
+      let totalIgnored = 0;
       let totalDifferences = 0;
       let completedJobs = 0;
       let totalObjects = 0;
@@ -592,32 +620,61 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
 
         const fieldCount = result.summary.totalFields;
         const matchCount = result.summary.totalMatches;
+        const ignoredCount = result.summary.totalIgnored || 0;
         const diffCount = result.summary.totalDifferences;
-        const matchRate = fieldCount > 0 ? ((matchCount / fieldCount) * 100).toFixed(1) : '0';
+        
+        // Count ignored from items if summary doesn't have it
+        let actualIgnoredCount = ignoredCount;
+        if (ignoredCount === 0) {
+          actualIgnoredCount = 0;
+          result.results.forEach((nsResult: any) => {
+            nsResult.items.forEach((item: any) => {
+              if (item.status === 'IGNORED') {
+                actualIgnoredCount++;
+              }
+            });
+          });
+        }
+        const matchRate = fieldCount > 0 ? ((matchCount / (fieldCount - actualIgnoredCount)) * 100).toFixed(1) : '0';
         
         // Calculate object-level statistics
+        // An object is considered "matched" only if ALL its fields match or are ignored
+        // Formula: Object OK when (MATCH + IGNORED) = total fields
         const objectsSet = new Set<string>();
-        const matchedObjectsSet = new Set<string>();
+        const objectFieldCounts = new Map<string, { total: number; matched: number; ignored: number }>();
         
         result.results.forEach((nsResult: any) => {
           nsResult.items.forEach((item: any) => {
             const objectKey = `${item.kind}/${item.objectName}`;
             objectsSet.add(objectKey);
+            
+            // Track field counts per object
+            if (!objectFieldCounts.has(objectKey)) {
+              objectFieldCounts.set(objectKey, { total: 0, matched: 0, ignored: 0 });
+            }
+            const counts = objectFieldCounts.get(objectKey)!;
+            counts.total++;
+            
             if (item.status === 'MATCH') {
-              matchedObjectsSet.add(objectKey);
+              counts.matched++;
+            } else if (item.status === 'IGNORED') {
+              counts.ignored++;
             }
           });
         });
         
+        // Count objects where (MATCH + IGNORED) = total fields
         const nsObjects = objectsSet.size;
-        const nsMatchedObjects = matchedObjectsSet.size;
+        const nsMatchedObjects = Array.from(objectFieldCounts.values())
+          .filter(counts => (counts.matched + counts.ignored) === counts.total && counts.total > 0)
+          .length;
         const objectMatchRate = nsObjects > 0 ? ((nsMatchedObjects / nsObjects) * 100).toFixed(1) : '0';
         
         if (jobData.status.status === 'COMPLETED') completedJobs++;
         totalFields += fieldCount;
         totalMatches += matchCount;
         totalDifferences += diffCount;
-        totalObjects += nsObjects;
+        totalIgnored += actualIgnoredCount;
         totalMatchedObjects += nsMatchedObjects;
 
         // Get namespace name from result
@@ -634,84 +691,129 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
           objectMatchRate: parseFloat(objectMatchRate),
           fields: fieldCount,
           matches: matchCount,
+          ignored: actualIgnoredCount,
           differences: diffCount,
           matchRate: parseFloat(matchRate)
         });
       });
 
-      const overallMatchRate = totalFields > 0 ? ((totalMatches / totalFields) * 100).toFixed(1) : '0';
+      const overallMatchRate = totalFields > 0 ? ((totalMatches / (totalFields - totalIgnored)) * 100).toFixed(1) : '0';
 
       return (
         <>
-          {/* Summary Statistics */}
-          <Row gutter={[16, 16]}>
-            <Col span={4}>
-              <Card size="small">
-                <Statistic 
-                  title="Total Namespaces" 
-                  value={individualJobs.size}
-                  valueStyle={{ color: '#1890ff' }}
-                />
+          {/* Summary Statistics - Improved Layout */}
+          <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+            {/* Job Statistics Group */}
+            <Col xs={24} sm={12} lg={8}>
+              <Card 
+                size="small" 
+                title={<span style={{ fontSize: 13, fontWeight: 600, color: '#595959' }}>Job Statistics</span>}
+                headStyle={{ minHeight: 40, padding: '8px 12px', background: '#fafafa' }}
+                bodyStyle={{ padding: 16 }}
+              >
+                <Row gutter={[12, 12]}>
+                  <Col span={12}>
+                    <Statistic 
+                      title="Total Namespaces" 
+                      value={individualJobs.size}
+                      valueStyle={{ color: '#1890ff', fontSize: 20 }}
+                    />
+                  </Col>
+                  <Col span={12}>
+                    <Statistic 
+                      title="Completed" 
+                      value={completedJobs} 
+                      valueStyle={{ color: '#3f8600', fontSize: 20 }}
+                    />
+                  </Col>
+                </Row>
               </Card>
             </Col>
-            <Col span={4}>
-              <Card size="small">
-                <Statistic 
-                  title="Completed" 
-                  value={completedJobs} 
-                  valueStyle={{ color: '#3f8600' }}
-                />
+
+            {/* Object Statistics Group */}
+            <Col xs={24} sm={12} lg={8}>
+              <Card 
+                size="small" 
+                title={<span style={{ fontSize: 13, fontWeight: 600, color: '#595959' }}>Object Statistics</span>}
+                headStyle={{ minHeight: 40, padding: '8px 12px', background: '#fafafa' }}
+                bodyStyle={{ padding: 16 }}
+              >
+                <Row gutter={[12, 12]}>
+                  <Col span={12}>
+                    <Statistic 
+                      title="Total Objects" 
+                      value={totalObjects}
+                      valueStyle={{ color: '#1890ff', fontSize: 20 }}
+                    />
+                  </Col>
+                  <Col span={12}>
+                    <Statistic 
+                      title="Object Matches" 
+                      value={totalMatchedObjects}
+                      valueStyle={{ color: '#3f8600', fontSize: 20 }}
+                    />
+                  </Col>
+                </Row>
               </Card>
             </Col>
-            <Col span={4}>
-              <Card size="small">
-                <Statistic 
-                  title="Total Objects" 
-                  value={totalObjects}
-                  valueStyle={{ color: '#1890ff' }}
-                />
-              </Card>
-            </Col>
-            <Col span={4}>
-              <Card size="small">
-                <Statistic 
-                  title="Object Matches" 
-                  value={totalMatchedObjects}
-                  valueStyle={{ color: '#3f8600' }}
-                />
-              </Card>
-            </Col>
-            <Col span={4}>
-              <Card size="small">
-                <Statistic 
-                  title="Total Fields" 
-                  value={totalFields}
-                  valueStyle={{ color: '#1890ff' }}
-                />
-              </Card>
-            </Col>
-            <Col span={4}>
-              <Card size="small">
-                <Statistic 
-                  title="Field Matches" 
-                  value={totalMatches}
-                  valueStyle={{ color: '#3f8600' }}
-                />
+
+            {/* Field Statistics Group */}
+            <Col xs={24} sm={24} lg={8}>
+              <Card 
+                size="small" 
+                title={<span style={{ fontSize: 13, fontWeight: 600, color: '#595959' }}>Field Statistics</span>}
+                headStyle={{ minHeight: 40, padding: '8px 12px', background: '#fafafa' }}
+                bodyStyle={{ padding: 16 }}
+              >
+                <Row gutter={[12, 12]}>
+                  <Col span={8}>
+                    <Statistic 
+                      title="Total" 
+                      value={totalFields}
+                      valueStyle={{ color: '#1890ff', fontSize: 20 }}
+                    />
+                  </Col>
+                  <Col span={8}>
+                    <Statistic 
+                      title="Matched" 
+                      value={totalMatches}
+                      valueStyle={{ color: '#3f8600', fontSize: 20 }}
+                    />
+                  </Col>
+                  <Col span={8}>
+                    <Statistic
+                      title="Ignored" 
+                      value={totalIgnored}
+                      valueStyle={{ color: '#4b98fc', fontSize: 20 }}
+                    />
+                  </Col>
+                </Row>
               </Card>
             </Col>
           </Row>
 
-          {/* Overall Match Rate - Full Width */}
-          <Row style={{ marginTop: 16 }}>
+          {/* Overall Match Rate - Highlighted */}
+          <Row style={{ marginBottom: 24 }}>
             <Col span={24}>
-              <Card size="small">
+              <Card 
+                size="small"
+                style={{ 
+                  background: parseFloat(overallMatchRate) >= 80 
+                    ? 'linear-gradient(135deg, #f6ffed 0%, #f0f9ff 100%)' 
+                    : parseFloat(overallMatchRate) >= 50 
+                    ? 'linear-gradient(135deg, #fffbf0 0%, #fff7e6 100%)' 
+                    : 'linear-gradient(135deg, #fff1f0 0%, #ffebee 100%)',
+                  border: `2px solid ${parseFloat(overallMatchRate) >= 80 ? '#b7eb8f' : parseFloat(overallMatchRate) >= 50 ? '#ffd591' : '#ffa39e'}`
+                }}
+              >
                 <Statistic 
-                  title="Overall Match Rate" 
+                  title={<span style={{ fontSize: 14, fontWeight: 600 }}>Overall Match Rate</span>}
                   value={overallMatchRate}
                   suffix="%"
                   valueStyle={{ 
                     color: parseFloat(overallMatchRate) >= 80 ? '#3f8600' : parseFloat(overallMatchRate) >= 50 ? '#faad14' : '#cf1322',
-                    fontSize: '32px'
+                    fontSize: '36px',
+                    fontWeight: 'bold'
                   }}
                 />
               </Card>
@@ -812,6 +914,16 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
                   align: 'center' as const,
                   render: (value: number) => (
                     <span style={{ color: '#3f8600' }}>{value}</span>
+                  )
+                },
+                {
+                  title: 'Ignored',
+                  dataIndex: 'ignored',
+                  key: 'ignored',
+                  width: 100,
+                  align: 'center' as const,
+                  render: (value: number) => (
+                    <span style={{ color: 'rgb(75, 152, 252)' }}>{value || 0}</span>
                   )
                 },
                 {

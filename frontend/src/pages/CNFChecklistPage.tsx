@@ -40,6 +40,30 @@ const { TextArea } = Input;
 
 type InputMode = 'json' | 'table';
 
+// Default ignore fields (fallback if API config fails to load)
+const DEFAULT_IGNORE_FIELDS = [
+  // 'metadata.creationTimestamp',
+  // 'metadata.generation',
+  // 'metadata.resourceVersion',
+  // 'metadata.uid',
+  // 'metadata.selfLink',
+  // 'metadata.managedFields',
+  'metadata.namespace',
+  // 'metadata.annotations',
+  'status',
+  // 'spec.template.metadata.creationTimestamp',
+  // 'spec.clusterIP',
+  // 'spec.clusterIPs',
+  // 'spec.ipFamilies',
+  // 'spec.ipFamilyPolicy',
+  // 'spec.template.spec.nodeName',
+  // 'spec.template.spec.restartPolicy',
+  // 'spec.template.spec.dnsPolicy',
+  // 'spec.template.spec.schedulerName',
+  // 'spec.template.spec.securityContext',
+  // 'spec.template.spec.enableServiceLinks',
+];
+
 export const CNFChecklistPage = () => {
   const { message } = App.useApp();
   const [form] = Form.useForm();
@@ -50,7 +74,7 @@ export const CNFChecklistPage = () => {
   const [loading, setLoading] = useState(false);
   const [jobStatus, setJobStatus] = useState<ValidationJobResponse | null>(null);
   const [completedJobId, setCompletedJobId] = useState<string | null>(null);
-  const [ignoreFields, setIgnoreFields] = useState<string[]>([]);
+  const [ignoreFields, setIgnoreFields] = useState<string[]>(DEFAULT_IGNORE_FIELDS);
   const [fullConfigModalVisible, setFullConfigModalVisible] = useState(false);
   const [configViewMode, setConfigViewMode] = useState<'ui' | 'yaml'>('ui');
   const [yamlConfig, setYamlConfig] = useState('');
@@ -97,6 +121,66 @@ export const CNFChecklistPage = () => {
     const newData = [...tableData];
     newData[index] = { ...newData[index], [field]: value };
     setTableData(newData);
+  };
+
+  const handleJsonFileUpload = async (file: File) => {
+    try {
+      setLoading(true);
+      const response = await validationApi.uploadJsonFile(file);
+      
+      if (response.success && response.items) {
+        setTableData(response.items);
+        setInputMode('table');
+        message.success(response.message || `Loaded ${response.itemCount} items from JSON file`);
+      } else {
+        message.error('Failed to parse JSON file');
+      }
+    } catch (error: any) {
+      message.error(error.response?.data?.error || error.message || 'Failed to upload JSON file');
+    } finally {
+      setLoading(false);
+    }
+    return false; // Prevent default upload
+  };
+
+  const handleExcelFileUpload = async (file: File) => {
+    try {
+      setLoading(true);
+      const response = await validationApi.uploadExcelFile(file);
+      
+      if (response.success && response.items) {
+        setTableData(response.items);
+        setInputMode('table');
+        message.success(response.message || `Loaded ${response.itemCount} items from Excel file`);
+      } else {
+        message.error('Failed to parse Excel file');
+      }
+    } catch (error: any) {
+      message.error(error.response?.data?.error || error.message || 'Failed to upload Excel file');
+    } finally {
+      setLoading(false);
+    }
+    return false; // Prevent default upload
+  };
+
+  const handleDownloadTemplate = async () => {
+    try {
+      setLoading(true);
+      const blob = await validationApi.downloadExcelTemplate();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'cnf-checklist-template.xlsx';
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      message.success('Template downloaded successfully');
+    } catch (error: any) {
+      message.error('Failed to download template');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const generateYamlFromState = () => {
@@ -180,10 +264,13 @@ ${config.ignoreFields.map(f => `  - "${f}"`).join('\n')}`;
       dataIndex: 'vimName',
       key: 'vimName',
       width: 120,
+      sorter: (a: CNFChecklistItem, b: CNFChecklistItem) => a.vimName.localeCompare(b.vimName),
+      filters: Array.from(new Set(tableData.map((item: CNFChecklistItem) => item.vimName))).map((v: string) => ({ text: v, value: v })),
+      onFilter: (value: any, record: CNFChecklistItem) => record.vimName === value,
       render: (text: string, _: CNFChecklistItem, index: number) => (
         <Input 
           value={text} 
-          onChange={(e) => handleCellEdit(index, 'vimName', e.target.value)}
+          onChange={(e: any) => handleCellEdit(index, 'vimName', e.target.value)}
           size="small"
         />
       ),
@@ -193,10 +280,13 @@ ${config.ignoreFields.map(f => `  - "${f}"`).join('\n')}`;
       dataIndex: 'namespace',
       key: 'namespace',
       width: 120,
+      sorter: (a: CNFChecklistItem, b: CNFChecklistItem) => a.namespace.localeCompare(b.namespace),
+      filters: Array.from(new Set(tableData.map((item: CNFChecklistItem) => item.namespace))).map((v: string) => ({ text: v, value: v })),
+      onFilter: (value: any, record: CNFChecklistItem) => record.namespace === value,
       render: (text: string, _: CNFChecklistItem, index: number) => (
         <Input 
           value={text} 
-          onChange={(e) => handleCellEdit(index, 'namespace', e.target.value)}
+          onChange={(e: any) => handleCellEdit(index, 'namespace', e.target.value)}
           size="small"
         />
       ),
@@ -206,10 +296,13 @@ ${config.ignoreFields.map(f => `  - "${f}"`).join('\n')}`;
       dataIndex: 'kind',
       key: 'kind',
       width: 120,
+      sorter: (a: CNFChecklistItem, b: CNFChecklistItem) => a.kind.localeCompare(b.kind),
+      filters: Array.from(new Set(tableData.map((item: CNFChecklistItem) => item.kind))).map((v: string) => ({ text: v, value: v })),
+      onFilter: (value: any, record: CNFChecklistItem) => record.kind === value,
       render: (text: string, _: CNFChecklistItem, index: number) => (
         <Input 
           value={text} 
-          onChange={(e) => handleCellEdit(index, 'kind', e.target.value)}
+          onChange={(e: any) => handleCellEdit(index, 'kind', e.target.value)}
           size="small"
         />
       ),
@@ -219,10 +312,37 @@ ${config.ignoreFields.map(f => `  - "${f}"`).join('\n')}`;
       dataIndex: 'objectName',
       key: 'objectName',
       width: 150,
+      sorter: (a: CNFChecklistItem, b: CNFChecklistItem) => a.objectName.localeCompare(b.objectName),
+      filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: any) => (
+        <div style={{ padding: 8 }}>
+          <Input
+            placeholder="Search object name"
+            value={selectedKeys[0]}
+            onChange={(e: any) => setSelectedKeys(e.target.value ? [e.target.value] : [])}
+            onPressEnter={() => confirm()}
+            style={{ marginBottom: 8, display: 'block' }}
+          />
+          <Space>
+            <Button
+              type="primary"
+              onClick={() => confirm()}
+              size="small"
+              style={{ width: 90 }}
+            >
+              Search
+            </Button>
+            <Button onClick={() => clearFilters?.()} size="small" style={{ width: 90 }}>
+              Reset
+            </Button>
+          </Space>
+        </div>
+      ),
+      onFilter: (value: any, record: CNFChecklistItem) => 
+        record.objectName.toLowerCase().includes(value.toLowerCase()),
       render: (text: string, _: CNFChecklistItem, index: number) => (
         <Input 
           value={text} 
-          onChange={(e) => handleCellEdit(index, 'objectName', e.target.value)}
+          onChange={(e: any) => handleCellEdit(index, 'objectName', e.target.value)}
           size="small"
         />
       ),
@@ -232,10 +352,37 @@ ${config.ignoreFields.map(f => `  - "${f}"`).join('\n')}`;
       dataIndex: 'fieldKey',
       key: 'fieldKey',
       width: 250,
+      sorter: (a: CNFChecklistItem, b: CNFChecklistItem) => a.fieldKey.localeCompare(b.fieldKey),
+      filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: any) => (
+        <div style={{ padding: 8 }}>
+          <Input
+            placeholder="Search field key"
+            value={selectedKeys[0]}
+            onChange={(e: any) => setSelectedKeys(e.target.value ? [e.target.value] : [])}
+            onPressEnter={() => confirm()}
+            style={{ marginBottom: 8, display: 'block' }}
+          />
+          <Space>
+            <Button
+              type="primary"
+              onClick={() => confirm()}
+              size="small"
+              style={{ width: 90 }}
+            >
+              Search
+            </Button>
+            <Button onClick={() => clearFilters?.()} size="small" style={{ width: 90 }}>
+              Reset
+            </Button>
+          </Space>
+        </div>
+      ),
+      onFilter: (value: any, record: CNFChecklistItem) => 
+        record.fieldKey.toLowerCase().includes(value.toLowerCase()),
       render: (text: string, _: CNFChecklistItem, index: number) => (
         <Input 
           value={text} 
-          onChange={(e) => handleCellEdit(index, 'fieldKey', e.target.value)}
+          onChange={(e: any) => handleCellEdit(index, 'fieldKey', e.target.value)}
           size="small"
         />
       ),
@@ -245,10 +392,36 @@ ${config.ignoreFields.map(f => `  - "${f}"`).join('\n')}`;
       dataIndex: 'manoValue',
       key: 'manoValue',
       width: 200,
+      filterDropdown: ({ setSelectedKeys, selectedKeys, confirm, clearFilters }: any) => (
+        <div style={{ padding: 8 }}>
+          <Input
+            placeholder="Search value"
+            value={selectedKeys[0]}
+            onChange={(e: any) => setSelectedKeys(e.target.value ? [e.target.value] : [])}
+            onPressEnter={() => confirm()}
+            style={{ marginBottom: 8, display: 'block' }}
+          />
+          <Space>
+            <Button
+              type="primary"
+              onClick={() => confirm()}
+              size="small"
+              style={{ width: 90 }}
+            >
+              Search
+            </Button>
+            <Button onClick={() => clearFilters?.()} size="small" style={{ width: 90 }}>
+              Reset
+            </Button>
+          </Space>
+        </div>
+      ),
+      onFilter: (value: any, record: CNFChecklistItem) => 
+        record.manoValue.toLowerCase().includes(value.toLowerCase()),
       render: (text: string, _: CNFChecklistItem, index: number) => (
         <Input 
           value={text} 
-          onChange={(e) => handleCellEdit(index, 'manoValue', e.target.value)}
+          onChange={(e: any) => handleCellEdit(index, 'manoValue', e.target.value)}
           size="small"
         />
       ),
@@ -345,10 +518,13 @@ ${config.ignoreFields.map(f => `  - "${f}"`).join('\n')}`;
       items,
       description: `CNF Checklist Validation - ${new Date().toLocaleString()}`,
       matchingStrategy: matchingStrategy,
+      ignoreFields: ignoreFields.length > 0 ? ignoreFields : undefined, // Include ignore fields
     };
 
     console.log('CNF Checklist Request:', request);
     console.log('Matching Strategy:', matchingStrategy);
+    console.log('Ignore Fields:', ignoreFields);
+    console.log('Ignore Fields Count:', ignoreFields.length);
 
     try {
       setLoading(true);
@@ -537,8 +713,36 @@ ${config.ignoreFields.map(f => `  - "${f}"`).join('\n')}`;
               />
 
           <div>
-            <div style={{ marginBottom: 16 }}>
+            <div style={{ marginBottom: 16, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <strong>Input Mode:</strong>
+              <Space>
+                <Upload
+                  accept=".json"
+                  beforeUpload={handleJsonFileUpload}
+                  showUploadList={false}
+                >
+                  <Button icon={<UploadIcon size={16} />} size="small">
+                    Upload JSON
+                  </Button>
+                </Upload>
+                <Upload
+                  accept=".xlsx,.xls"
+                  beforeUpload={handleExcelFileUpload}
+                  showUploadList={false}
+                >
+                  <Button icon={<UploadIcon size={16} />} size="small">
+                    Upload Excel
+                  </Button>
+                </Upload>
+                <Button 
+                  icon={<Download size={16} />} 
+                  size="small"
+                  onClick={handleDownloadTemplate}
+                  loading={loading}
+                >
+                  Download Template
+                </Button>
+              </Space>
             </div>
             <Radio.Group value={inputMode} onChange={(e) => {
               const newMode = e.target.value;

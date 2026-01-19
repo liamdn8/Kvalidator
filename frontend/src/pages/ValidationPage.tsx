@@ -9,11 +9,35 @@ import { FullValidationConfig } from '../components/FullValidationConfig';
 import { validationApi } from '../services/api';
 import type { ClusterNamespace, ValidationRequest, ValidationResultJson, ValidationJobResponse } from '../types';
 
+// Default ignore fields (fallback if API config fails to load)
+const DEFAULT_IGNORE_FIELDS = [
+  // 'metadata.creationTimestamp',
+  // 'metadata.generation',
+  // 'metadata.resourceVersion',
+  // 'metadata.uid',
+  // 'metadata.selfLink',
+  // 'metadata.managedFields',
+  'metadata.namespace',
+  // 'metadata.annotations',
+  'status',
+  // 'spec.template.metadata.creationTimestamp',
+  // 'spec.clusterIP',
+  // 'spec.clusterIPs',
+  // 'spec.ipFamilies',
+  // 'spec.ipFamilyPolicy',
+  // 'spec.template.spec.nodeName',
+  // 'spec.template.spec.restartPolicy',
+  // 'spec.template.spec.dnsPolicy',
+  // 'spec.template.spec.schedulerName',
+  // 'spec.template.spec.securityContext',
+  // 'spec.template.spec.enableServiceLinks',
+];
+
 
 export const ValidationPage = () => {
   const { message } = App.useApp();
   const [selectedNamespaces, setSelectedNamespaces] = useState<ClusterNamespace[]>([]);
-  const [ignoreFields, setIgnoreFields] = useState<string[]>([]);
+  const [ignoreFields, setIgnoreFields] = useState<string[]>(DEFAULT_IGNORE_FIELDS);
   const [baseline, setBaseline] = useState<{
     type: 'yaml' | 'namespace';
     yamlContent?: string;
@@ -128,6 +152,8 @@ baseline:
     console.log('=== Validation Debug ===');
     console.log('Selected Namespaces:', selectedNamespaces);
     console.log('Baseline:', baseline);
+    console.log('Ignore Fields:', ignoreFields);
+    console.log('Ignore Fields Count:', ignoreFields.length);
 
     // Validation
     if (selectedNamespaces.length === 0) {
@@ -150,6 +176,7 @@ baseline:
       namespaces: [],
       exportExcel: true,
       description: `Validation: ${new Date().toLocaleString()}`,
+      ignoreFields: ignoreFields.length > 0 ? ignoreFields : undefined, // Include ignore fields
     };
 
     if (baseline.type === 'yaml') {

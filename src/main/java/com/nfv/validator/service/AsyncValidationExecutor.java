@@ -296,6 +296,11 @@ public class AsyncValidationExecutor {
             jobRequest.setKinds(batchRequest.getKinds());
         }
         
+        // Copy ignore fields from batch request
+        if (batchRequest.getIgnoreFields() != null) {
+            jobRequest.setIgnoreFields(new ArrayList<>(batchRequest.getIgnoreFields()));
+        }
+        
         // Handle baseline if present (file-based)
         if (batchRequest.getBaseline() != null && !batchRequest.getBaseline().trim().isEmpty()) {
             // For now, we don't support file-based baseline from batch
@@ -327,8 +332,17 @@ public class AsyncValidationExecutor {
             configFile = "validation-config.yaml"; // Ensure default config is always used
         }
         ValidationConfig validationConfig = configLoader.load(configFile);
-        log.info("Loaded validation config with {} ignore rules", 
+        log.info("Loaded default validation config with {} ignore rules", 
                 validationConfig.getIgnoreFields().size());
+        
+        // Merge with custom ignore fields from request if provided
+        if (request.getIgnoreFields() != null && !request.getIgnoreFields().isEmpty()) {
+            for (String customIgnoreField : request.getIgnoreFields()) {
+                validationConfig.addIgnoreField(customIgnoreField);
+            }
+            log.info("Added {} custom ignore fields from request. Total ignore rules: {}", 
+                    request.getIgnoreFields().size(), validationConfig.getIgnoreFields().size());
+        }
         
         // Update progress
         updateProgress(jobId, "Loading configuration", 5, 0, request.getNamespaces().size(), 0);
@@ -509,6 +523,24 @@ public class AsyncValidationExecutor {
             log.info("Collected {} objects from {}/{}", 
                     model.getObjects().size(), target.clusterName, target.namespaceName);
         }
+        
+        // Filter ignored fields from all collected models BEFORE comparison
+        // This improves performance and prevents ignored fields from appearing in results
+        updateProgress(jobId, "Filtering ignored fields", 55, targets.size(), targets.size(), objectsCollected);
+        
+        if (baselineModel != null) {
+            validationConfig.filterIgnoredFields(baselineModel);
+        }
+        
+        for (FlatNamespaceModel nsModel : namespaceModels) {
+            // Skip baseline if already filtered
+            if (nsModel != baselineModel) {
+                validationConfig.filterIgnoredFields(nsModel);
+            }
+        }
+        
+        log.info("Filtered ignored fields from {} namespace models using {} ignore rules", 
+                namespaceModels.size(), validationConfig.getIgnoreFields().size());
         
         // Perform comparisons
         updateProgress(jobId, "Comparing namespaces", 60, targets.size(), targets.size(), objectsCollected);
@@ -878,6 +910,29 @@ public class AsyncValidationExecutor {
             configFile = "validation-config.yaml";
         }
         ValidationConfig validationConfig = configLoader.load(configFile);
+        log.info("Loaded default validation config with {} ignore rules for CNF validation", 
+                validationConfig.getIgnoreFields().size());
+        
+        // Merge with custom ignore fields from CNF request if provided
+        if (request.getCnfChecklistRequest() instanceof CNFChecklistRequest) {
+            CNFChecklistRequest cnfRequest = (CNFChecklistRequest) request.getCnfChecklistRequest();
+            if (cnfRequest.getIgnoreFields() != null && !cnfRequest.getIgnoreFields().isEmpty()) {
+                for (String customIgnoreField : cnfRequest.getIgnoreFields()) {
+                    validationConfig.addIgnoreField(customIgnoreField);
+                }
+                log.info("Added {} custom ignore fields from CNF request. Total ignore rules: {}", 
+                        cnfRequest.getIgnoreFields().size(), validationConfig.getIgnoreFields().size());
+            }
+        }
+        
+        // Also merge with custom ignore fields from job request if provided
+        if (request.getIgnoreFields() != null && !request.getIgnoreFields().isEmpty()) {
+            for (String customIgnoreField : request.getIgnoreFields()) {
+                validationConfig.addIgnoreField(customIgnoreField);
+            }
+            log.info("Added {} custom ignore fields from job request. Total ignore rules: {}", 
+                    request.getIgnoreFields().size(), validationConfig.getIgnoreFields().size());
+        }
         
         // Update progress
         updateProgress(jobId, "Preparing CNF checklist validation", 5, 0, baselineMap.size(), 0);
@@ -929,6 +984,13 @@ public class AsyncValidationExecutor {
             objectsCollected += actualModel.getObjects().size();
             log.info("Collected {} actual objects from {}/{}", 
                     actualModel.getObjects().size(), vimName, namespace);
+            
+            // Filter ignored fields from BOTH baseline and actual models BEFORE comparison
+            // When user adds ignore rules, they want to ignore those fields completely
+            // (not validate them and not show them in results)
+            validationConfig.filterIgnoredFields(baselineModel);
+            validationConfig.filterIgnoredFields(actualModel);
+            log.debug("Filtered ignored fields from baseline and actual for CNF comparison: {}", namespaceKey);
             
             // Debug logging for CNF checklist
             log.info("DEBUG CNF: vimName='{}', baselineModel.getClusterName()='{}', actualModel.getClusterName()='{}'", 
@@ -1063,6 +1125,13 @@ public class AsyncValidationExecutor {
             objectsCollected += actualModel.getObjects().size();
             log.info("Collected {} actual objects from {}/{}", 
                     actualModel.getObjects().size(), vimName, namespace);
+            
+            // Filter ignored fields from BOTH baseline and actual models BEFORE comparison
+            // When user adds ignore rules, they want to ignore those fields completely
+            // (not validate them and not show them in results)
+            validationConfig.filterIgnoredFields(baselineModel);
+            validationConfig.filterIgnoredFields(actualModel);
+            log.debug("Filtered ignored fields from baseline and actual for CNF sync comparison: {}", namespaceKey);
             
             // Add models for comparison
             namespaceModels.add(baselineModel);

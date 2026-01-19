@@ -8,6 +8,7 @@ export interface ValidationRequest {
   baselineYamlContent?: string; // Client-side YAML content
   exportExcel?: boolean;
   description?: string;
+  ignoreFields?: string[]; // Custom ignore fields for this validation
 }
 
 export interface BatchValidationRequestItem {

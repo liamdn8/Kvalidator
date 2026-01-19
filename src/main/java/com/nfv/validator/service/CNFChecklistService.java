@@ -11,6 +11,7 @@ import com.nfv.validator.model.comparison.ComparisonStatus;
 import com.nfv.validator.model.comparison.KeyComparison;
 import com.nfv.validator.model.comparison.NamespaceComparison;
 import com.nfv.validator.model.comparison.ObjectComparison;
+import com.nfv.validator.config.ValidationConfig;
 import lombok.extern.slf4j.Slf4j;
 
 import javax.enterprise.context.ApplicationScoped;
@@ -204,6 +205,11 @@ public class CNFChecklistService {
             validationRequest.setKinds(kinds);
             validationRequest.setDefaultCluster(vimName);
             validationRequest.setVerbose(false);
+            
+            // Transfer ignore fields from CNF request
+            if (cnfRequest.getIgnoreFields() != null) {
+                validationRequest.setIgnoreFields(new ArrayList<>(cnfRequest.getIgnoreFields()));
+            }
             
             // Store flattened baseline in request metadata for validator to use
             validationRequest.setFlattenedBaseline(baselineModel);
@@ -497,6 +503,15 @@ public class CNFChecklistService {
         
         log.info("Converting comparison results to CNF format for {} items", request.getItems().size());
         
+        // Create a ValidationConfig to check ignore rules
+        ValidationConfig validationConfig = new ValidationConfig();
+        if (request.getIgnoreFields() != null) {
+            for (String ignoreField : request.getIgnoreFields()) {
+                validationConfig.addIgnoreField(ignoreField);
+            }
+            log.info("Loaded {} ignore rules for CNF comparison", request.getIgnoreFields().size());
+        }
+        
         // Group items by vimName/namespace
         Map<String, List<CNFChecklistItem>> itemsByNamespace = new HashMap<>();
         for (CNFChecklistItem item : request.getItems()) {
@@ -526,6 +541,7 @@ public class CNFChecklistService {
             int matchCount = 0;
             int differenceCount = 0;
             int missingCount = 0;
+            int ignoredCount = 0;
             int errorCount = 0;
             
             // Find the corresponding NamespaceComparison
@@ -540,7 +556,6 @@ public class CNFChecklistService {
             for (CNFChecklistItem item : items) {
                 // Use just object name as key (matching K8sDataCollector format)
                 String objectKey = item.getObjectName();
-                ObjectComparison objComp = nsComparison.getObjectComparisons().get(objectKey);
                 
                 CnfComparison.CnfChecklistResult result = CnfComparison.CnfChecklistResult.builder()
                         .kind(item.getKind())
@@ -548,6 +563,19 @@ public class CNFChecklistService {
                         .fieldKey(item.getFieldKey())
                         .baselineValue(item.getManoValue())
                         .build();
+                
+                // Check if this field should be ignored
+                if (validationConfig.shouldIgnore(item.getFieldKey())) {
+                    result.setActualValue("(ignored)");
+                    result.setStatus(CnfComparison.ValidationStatus.IGNORED);
+                    result.setMessage("Field ignored by ignore rules");
+                    ignoredCount++;
+                    log.debug("Field '{}' marked as IGNORED by ignore rules", item.getFieldKey());
+                    cnfComp.addItem(result);
+                    continue;
+                }
+                
+                ObjectComparison objComp = nsComparison.getObjectComparisons().get(objectKey);
                 
                 if (objComp == null) {
                     // Object not found in runtime
@@ -655,14 +683,15 @@ public class CNFChecklistService {
                     .matchCount(matchCount)
                     .differenceCount(differenceCount)
                     .missingCount(missingCount)
+                    .ignoredCount(ignoredCount)
                     .errorCount(errorCount)
                     .build();
             
             cnfComp.setSummary(summary);
             cnfResults.add(cnfComp);
             
-            log.info("CNF results for {}: {} total, {} match, {} diff, {} missing", 
-                    namespaceKey, items.size(), matchCount, differenceCount, missingCount);
+            log.info("CNF results for {}: {} total, {} match, {} diff, {} missing, {} ignored", 
+                    namespaceKey, items.size(), matchCount, differenceCount, missingCount, ignoredCount);
         }
         
         return cnfResults;

@@ -1,7 +1,6 @@
 package com.nfv.validator.model.cnf;
 
 import lombok.AllArgsConstructor;
-import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
@@ -15,7 +14,6 @@ import java.util.List;
  * Contains list of items to validate against Kubernetes cluster
  */
 @Data
-@Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class CNFChecklistRequest {
@@ -24,7 +22,6 @@ public class CNFChecklistRequest {
      * List of checklist items to validate
      */
     @JsonProperty("items")
-    @Builder.Default
     private List<CNFChecklistItem> items = new ArrayList<>();
     
     /**
@@ -46,8 +43,14 @@ public class CNFChecklistRequest {
      * - "identity": Use semantic/identity-based matching (V2 engine)
      */
     @JsonProperty("matchingStrategy")
-    @Builder.Default
     private String matchingStrategy = "value";
+    
+    /**
+     * Custom ignore fields for this validation (optional)
+     * These will be merged with default ignore rules from config
+     */
+    @JsonProperty("ignoreFields")
+    private List<String> ignoreFields;
     
     /**
      * Determine if V2 semantic comparison should be used based on matching strategy

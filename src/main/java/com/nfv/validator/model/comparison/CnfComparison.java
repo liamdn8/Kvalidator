@@ -122,6 +122,9 @@ public class CnfComparison {
         @JsonProperty("MISSING_IN_RUNTIME")
         MISSING_IN_RUNTIME, // Field/object not found in runtime
         
+        @JsonProperty("IGNORED")
+        IGNORED,            // Field ignored by ignore rules
+        
         @JsonProperty("ERROR")
         ERROR               // Error during validation
     }
@@ -157,6 +160,12 @@ public class CnfComparison {
          */
         @JsonProperty("missingCount")
         private int missingCount;
+        
+        /**
+         * Number of fields ignored by ignore rules
+         */
+        @JsonProperty("ignoredCount")
+        private int ignoredCount;
         
         /**
          * Number of errors

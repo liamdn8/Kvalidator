@@ -1,7 +1,6 @@
 package com.nfv.validator.batch;
 
 import com.nfv.validator.comparison.NamespaceComparator;
-import com.nfv.validator.config.FeatureFlags;
 import com.nfv.validator.service.ValidationServiceV2;
 import com.nfv.validator.config.ConfigLoader;
 import com.nfv.validator.config.ValidationConfig;
