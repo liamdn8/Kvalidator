@@ -122,9 +122,10 @@ public class CNFChecklistService {
             object.addSpec(specKey, value);
             log.debug("Added spec field: {} = {}", specKey, value);
         } else if (fieldKey.startsWith("data.")) {
-            // For ConfigMap data fields, treat as spec
-            object.addSpec(fieldKey, value);
-            log.debug("Added data field: {} = {}", fieldKey, value);
+            // For ConfigMap data fields, use the dedicated data map
+            String dataKey = fieldKey.substring("data.".length());
+            object.addData(dataKey, value);
+            log.debug("Added data field: {} = {}", dataKey, value);
         } else {
             // Default: add to spec if not explicitly metadata
             object.addSpec(fieldKey, value);
@@ -640,34 +641,67 @@ public class CNFChecklistService {
                                 matchCount++;
                                 log.info("Flexible match confirmed: value='{}' (index remapped)", fieldComp.getRightValue());
                             } else {
-                                // Map ComparisonStatus to ValidationStatus for exact match or no remapping
-                                switch (fieldComp.getStatus()) {
-                                    case MATCH:
-                                    case BOTH_NULL:
-                                        result.setStatus(CnfComparison.ValidationStatus.MATCH);
-                                        matchCount++;
-                                        break;
-                                    case DIFFERENT:
-                                        result.setStatus(CnfComparison.ValidationStatus.DIFFERENT);
-                                        result.setMessage(String.format("Expected: %s, Actual: %s", 
-                                                fieldComp.getLeftValue(), fieldComp.getRightValue()));
-                                        differenceCount++;
-                                        break;
-                                    case ONLY_IN_RIGHT:
-                                        result.setActualValue(fieldComp.getRightValue());
-                                        result.setStatus(CnfComparison.ValidationStatus.MISSING_IN_RUNTIME);
-                                        result.setMessage("Field exists in runtime but not in baseline");
-                                        missingCount++;
-                                        break;
-                                    case ONLY_IN_LEFT:
-                                        result.setStatus(CnfComparison.ValidationStatus.MISSING_IN_RUNTIME);
-                                        result.setMessage("Field missing in runtime");
-                                        missingCount++;
-                                        break;
-                                    default:
-                                        result.setStatus(CnfComparison.ValidationStatus.ERROR);
-                                        result.setMessage("Unknown comparison status");
-                                        errorCount++;
+                                // CRITICAL: Defensive check - verify actual values before trusting comparison status
+                                // If manoValue (expected) == rightValue (actual), it's a MATCH regardless of what
+                                // the comparison engine reports. This handles bugs in baseline creation or comparison.
+                                boolean valuesMatch = false;
+                                if (item.getManoValue() != null && fieldComp.getRightValue() != null) {
+                                    valuesMatch = item.getManoValue().equals(fieldComp.getRightValue());
+                                } else if (item.getManoValue() == null && fieldComp.getRightValue() == null) {
+                                    valuesMatch = true;
+                                }
+                                
+                                if (valuesMatch) {
+                                    // Values match - override any wrong status from comparison engine
+                                    result.setStatus(CnfComparison.ValidationStatus.MATCH);
+                                    result.setMessage(null);
+                                    matchCount++;
+                                    
+                                    // Log warning if comparison engine reported wrong status
+                                    if (fieldComp.getStatus() != ComparisonStatus.MATCH && 
+                                        fieldComp.getStatus() != ComparisonStatus.BOTH_NULL) {
+                                        log.warn("Comparison engine reported status '{}' but values match! " +
+                                                "fieldKey='{}', matchedKey='{}', value='{}'. Overriding to MATCH.",
+                                                fieldComp.getStatus(), item.getFieldKey(), fieldComp.getKey(), 
+                                                fieldComp.getRightValue());
+                                    }
+                                } else {
+                                    // Values don't match - use comparison engine status
+                                    // Map ComparisonStatus to ValidationStatus
+                                    switch (fieldComp.getStatus()) {
+                                        case MATCH:
+                                        case BOTH_NULL:
+                                            result.setStatus(CnfComparison.ValidationStatus.MATCH);
+                                            matchCount++;
+                                            break;
+                                        case DIFFERENT:
+                                            result.setStatus(CnfComparison.ValidationStatus.DIFFERENT);
+                                            result.setMessage(String.format("Expected: %s, Actual: %s", 
+                                                    fieldComp.getLeftValue(), fieldComp.getRightValue()));
+                                            differenceCount++;
+                                            break;
+                                        case ONLY_IN_RIGHT:
+                                            // This should never happen - baseline created from CNF checklist
+                                            log.error("IMPOSSIBLE: ONLY_IN_RIGHT for CNF field! fieldKey='{}' matchedKey='{}' " +
+                                                    "expectedValue='{}' actualValue='{}' leftValue='{}' rightValue='{}'",
+                                                    item.getFieldKey(), fieldComp.getKey(), item.getManoValue(), 
+                                                    fieldComp.getRightValue(), fieldComp.getLeftValue(), fieldComp.getRightValue());
+                                            result.setStatus(CnfComparison.ValidationStatus.ERROR);
+                                            result.setMessage(String.format("INTERNAL ERROR: status=ONLY_IN_RIGHT (matchedKey='%s', " +
+                                                    "leftValue='%s', rightValue='%s')", 
+                                                    fieldComp.getKey(), fieldComp.getLeftValue(), fieldComp.getRightValue()));
+                                            errorCount++;
+                                            break;
+                                        case ONLY_IN_LEFT:
+                                            result.setStatus(CnfComparison.ValidationStatus.MISSING_IN_RUNTIME);
+                                            result.setMessage("Field missing in runtime");
+                                            missingCount++;
+                                            break;
+                                        default:
+                                            result.setStatus(CnfComparison.ValidationStatus.ERROR);
+                                            result.setMessage("Unknown comparison status");
+                                            errorCount++;
+                                    }
                                 }
                             }
                         }
@@ -678,6 +712,7 @@ public class CNFChecklistService {
             }
             
             // Build summary
+            // totalFields = all items from CNF checklist (should equal sum of all status counts)
             CnfComparison.CnfSummary summary = CnfComparison.CnfSummary.builder()
                     .totalFields(items.size())
                     .matchCount(matchCount)
@@ -690,8 +725,15 @@ public class CNFChecklistService {
             cnfComp.setSummary(summary);
             cnfResults.add(cnfComp);
             
-            log.info("CNF results for {}: {} total, {} match, {} diff, {} missing, {} ignored", 
-                    namespaceKey, items.size(), matchCount, differenceCount, missingCount, ignoredCount);
+            // Validate summary math
+            int sumOfCounts = matchCount + differenceCount + missingCount + ignoredCount + errorCount;
+            if (sumOfCounts != items.size()) {
+                log.error("Summary math mismatch for {}: totalFields={} but sum of counts={} (match={}, diff={}, missing={}, ignored={}, error={})",
+                        namespaceKey, items.size(), sumOfCounts, matchCount, differenceCount, missingCount, ignoredCount, errorCount);
+            }
+            
+            log.info("CNF results for {}: {} total, {} match, {} diff, {} missing, {} ignored, {} error", 
+                    namespaceKey, items.size(), matchCount, differenceCount, missingCount, ignoredCount, errorCount);
         }
         
         return cnfResults;
@@ -761,6 +803,13 @@ public class CNFChecklistService {
             String prefix = listStart > 0 ? fieldKey.substring(0, listStart + 1) : "";
             String listName = fieldKey.substring(listStart + 1, lastBracketStart);
             int indexEnd = fieldKey.indexOf("]", lastBracketStart);
+            
+            // Validate bracket structure
+            if (indexEnd == -1 || indexEnd + 2 >= fieldKey.length()) {
+                log.warn("Invalid fieldKey structure: '{}' - missing closing bracket or suffix", fieldKey);
+                return null;
+            }
+            
             String suffix = fieldKey.substring(indexEnd + 2); // Skip "].
             
             log.info("Value-based search: fieldKey='{}', listName='{}', prefix='{}', suffix='{}', value='{}'", 

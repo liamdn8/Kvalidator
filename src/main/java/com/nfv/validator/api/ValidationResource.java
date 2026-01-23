@@ -250,6 +250,15 @@ public class ValidationResource {
                     .build();
         }
         
+        // Force eager evaluation of all fields before async execution
+        // This prevents lazy deserialization issues in async context
+        for (com.nfv.validator.model.batch.ValidationRequest req : request.getRequests()) {
+            if (req.getBaselineYamlContent() != null) {
+                log.info("Request '{}' has baseline YAML content: {} chars", 
+                         req.getName(), req.getBaselineYamlContent().length());
+            }
+        }
+        
         try {
             // Create job for batch
             ValidationJobResponse job = jobService.createBatchJob(request);

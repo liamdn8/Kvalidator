@@ -1,6 +1,6 @@
 import { Layout, Menu } from 'antd';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Layers, GitCompare, ListChecks } from 'lucide-react';
+import { Layers, GitCompare, ListChecks, FileSpreadsheet } from 'lucide-react';
 
 const { Header, Content } = Layout;
 
@@ -22,6 +22,17 @@ export const MainLayout = () => {
       key: '/cnf-checklist',
       label: <Link to="/cnf-checklist">CNF Checklist</Link>,
       icon: <ListChecks size={16} />,
+    },
+    {
+      key: 'yaml-to-cnf',
+      label: 'YAML to CNF',
+      icon: <FileSpreadsheet size={16} />,
+      children: [
+        {
+          key: '/batch-yaml-to-cnf',
+          label: <Link to="/batch-yaml-to-cnf">Batch Files</Link>,
+        },
+      ],
     },
   ];
 

@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ValidationPage } from './pages/ValidationPage';
 import { BatchValidationPage } from './pages/BatchValidationPage';
 import { CNFChecklistPage } from './pages/CNFChecklistPage';
+import BatchYamlToCNFPage from './pages/BatchYamlToCNFPage';
 import { MainLayout } from './layouts/MainLayout';
 
 function App() {
@@ -22,6 +23,7 @@ function App() {
               <Route index element={<ValidationPage />} />
               <Route path="batch" element={<BatchValidationPage />} />
               <Route path="cnf-checklist" element={<CNFChecklistPage />} />
+              <Route path="batch-yaml-to-cnf" element={<BatchYamlToCNFPage />} />
             </Route>
           </Routes>
         </BrowserRouter>

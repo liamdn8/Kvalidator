@@ -262,6 +262,13 @@ public class BatchExecutor {
             request.setConfigFile(settings.getDefaultConfigFile());
         }
         
+        // Apply global ignore fields if not set per request
+        if ((request.getIgnoreFields() == null || request.getIgnoreFields().isEmpty()) && 
+            settings.getIgnoreFields() != null && !settings.getIgnoreFields().isEmpty()) {
+            request.setIgnoreFields(new ArrayList<>(settings.getIgnoreFields()));
+            log.debug("Applied global ignore fields to request: {}", request.getName());
+        }
+        
         // Apply actual output directory (with timestamp) to output path
         if (request.getOutput() != null) {
             String outputPath = Paths.get(actualOutputDir, request.getOutput()).toString();
@@ -288,14 +295,28 @@ public class BatchExecutor {
                                           BatchExecutionResult.RequestResult result,
                                           BatchValidationRequest batchRequest) throws Exception {
         
-        System.out.println("📂 Loading baseline from: " + request.getBaseline());
+        FlatNamespaceModel baselineModel;
         
-        // Load baseline
-        YamlDataCollector yamlCollector = new YamlDataCollector();
-        FlatNamespaceModel baselineModel = yamlCollector.collectFromYaml(
-                request.getBaseline(), "baseline");
+        // Check if YAML content is provided (takes precedence over file path)
+        if (request.getBaselineYamlContent() != null && !request.getBaselineYamlContent().trim().isEmpty()) {
+            System.out.println("📝 Loading baseline from YAML content");
+            
+            YamlDataCollector yamlCollector = new YamlDataCollector();
+            baselineModel = yamlCollector.collectFromYamlContent(
+                    request.getBaselineYamlContent(), "baseline");
+            
+            System.out.printf("   ✓ Loaded %d objects from YAML content%n", baselineModel.getObjects().size());
+        } else {
+            System.out.println("📂 Loading baseline from: " + request.getBaseline());
+            
+            // Load baseline from file
+            YamlDataCollector yamlCollector = new YamlDataCollector();
+            baselineModel = yamlCollector.collectFromYaml(
+                    request.getBaseline(), "baseline");
+            
+            System.out.printf("   ✓ Loaded %d objects from baseline%n", baselineModel.getObjects().size());
+        }
         
-        System.out.printf("   ✓ Loaded %d objects from baseline%n", baselineModel.getObjects().size());
         System.out.println();
         
         // Collect from namespaces
@@ -374,6 +395,32 @@ public class BatchExecutor {
         
         System.out.println();
         System.out.println("🔍 Performing comparisons...");
+        
+        // Merge request-specific ignore fields with validation config
+        if (request.getIgnoreFields() != null && !request.getIgnoreFields().isEmpty()) {
+            ValidationConfig mergedConfig = new ValidationConfig();
+            
+            // Copy all ignore fields from original config
+            List<String> allIgnoreFields = new ArrayList<>();
+            if (validationConfig.getIgnoreFields() != null) {
+                allIgnoreFields.addAll(validationConfig.getIgnoreFields());
+            }
+            
+            // Add request-specific ignore fields (avoiding duplicates)
+            for (String field : request.getIgnoreFields()) {
+                if (!allIgnoreFields.contains(field)) {
+                    allIgnoreFields.add(field);
+                }
+            }
+            
+            mergedConfig.setIgnoreFields(allIgnoreFields);
+            
+            validationConfig = mergedConfig;
+            
+            log.info("Merged {} request-specific ignore fields with config (total: {})", 
+                    request.getIgnoreFields().size(), allIgnoreFields.size());
+            System.out.printf("   📋 Using %d ignore rules%n", allIgnoreFields.size());
+        }
         
         // Perform pairwise comparisons
         Map<String, NamespaceComparison> comparisons = new HashMap<>();

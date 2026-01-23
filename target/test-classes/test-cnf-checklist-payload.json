@@ -1,0 +1,658 @@
+{
+  "items": [
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/app-deployment/metadata.labels.app",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "app-deployment",
+      "fieldKey": "metadata.labels.app",
+      "manoValue": "myapp"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/app-deployment/metadata.labels.version",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "app-deployment",
+      "fieldKey": "metadata.labels.version",
+      "manoValue": "v1.1.0"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/app-deployment/spec.replicas",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "app-deployment",
+      "fieldKey": "spec.replicas",
+      "manoValue": "0"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/app-deployment/spec.selector.matchLabels.app",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "app-deployment",
+      "fieldKey": "spec.selector.matchLabels.app",
+      "manoValue": "myapp"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/app-deployment/spec.template.metadata.labels.app",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "app-deployment",
+      "fieldKey": "spec.template.metadata.labels.app",
+      "manoValue": "myapp"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/app-deployment/spec.template.metadata.labels.version",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "app-deployment",
+      "fieldKey": "spec.template.metadata.labels.version",
+      "manoValue": "v1.1.0"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/app-deployment/spec.template.spec.containers[0].env[0].name",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "app-deployment",
+      "fieldKey": "spec.template.spec.containers[0].env[0].name",
+      "manoValue": "DB_HOST"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/app-deployment/spec.template.spec.containers[0].env[0].valueFrom.configMapKeyRef.key",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "app-deployment",
+      "fieldKey": "spec.template.spec.containers[0].env[0].valueFrom.configMapKeyRef.key",
+      "manoValue": "database.host"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/app-deployment/spec.template.spec.containers[0].env[0].valueFrom.configMapKeyRef.name",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "app-deployment",
+      "fieldKey": "spec.template.spec.containers[0].env[0].valueFrom.configMapKeyRef.name",
+      "manoValue": "app-config"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/app-deployment/spec.template.spec.containers[0].env[1].name",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "app-deployment",
+      "fieldKey": "spec.template.spec.containers[0].env[1].name",
+      "manoValue": "DB_PASSWORD"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/app-deployment/spec.template.spec.containers[0].env[1].valueFrom.secretKeyRef.key",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "app-deployment",
+      "fieldKey": "spec.template.spec.containers[0].env[1].valueFrom.secretKeyRef.key",
+      "manoValue": "db-password"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/app-deployment/spec.template.spec.containers[0].env[1].valueFrom.secretKeyRef.name",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "app-deployment",
+      "fieldKey": "spec.template.spec.containers[0].env[1].valueFrom.secretKeyRef.name",
+      "manoValue": "app-secret"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/app-deployment/spec.template.spec.containers[0].image",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "app-deployment",
+      "fieldKey": "spec.template.spec.containers[0].image",
+      "manoValue": "nginx:1.22"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/app-deployment/spec.template.spec.containers[0].imagePullPolicy",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "app-deployment",
+      "fieldKey": "spec.template.spec.containers[0].imagePullPolicy",
+      "manoValue": "IfNotPresent"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/app-deployment/spec.template.spec.containers[0].name",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "app-deployment",
+      "fieldKey": "spec.template.spec.containers[0].name",
+      "manoValue": "app"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/app-deployment/spec.template.spec.containers[0].ports[0].containerPort",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "app-deployment",
+      "fieldKey": "spec.template.spec.containers[0].ports[0].containerPort",
+      "manoValue": "8080"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/app-deployment/spec.template.spec.containers[0].ports[0].protocol",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "app-deployment",
+      "fieldKey": "spec.template.spec.containers[0].ports[0].protocol",
+      "manoValue": "TCP"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-1/metadata.labels.app",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-1",
+      "fieldKey": "metadata.labels.app",
+      "manoValue": "test-app"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-1/metadata.labels.index",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-1",
+      "fieldKey": "metadata.labels.index",
+      "manoValue": "1"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-1/metadata.labels.version",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-1",
+      "fieldKey": "metadata.labels.version",
+      "manoValue": "v1.1.0"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-1/spec.replicas",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-1",
+      "fieldKey": "spec.replicas",
+      "manoValue": "0"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-1/spec.revisionHistoryLimit",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-1",
+      "fieldKey": "spec.revisionHistoryLimit",
+      "manoValue": "10"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-1/spec.selector.matchLabels.app",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-1",
+      "fieldKey": "spec.selector.matchLabels.app",
+      "manoValue": "test-app-1"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-1/spec.strategy.rollingUpdate.maxSurge",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-1",
+      "fieldKey": "spec.strategy.rollingUpdate.maxSurge",
+      "manoValue": "25%"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-1/spec.strategy.rollingUpdate.maxUnavailable",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-1",
+      "fieldKey": "spec.strategy.rollingUpdate.maxUnavailable",
+      "manoValue": "25%"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-1/spec.strategy.type",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-1",
+      "fieldKey": "spec.strategy.type",
+      "manoValue": "RollingUpdate"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-1/spec.template.metadata.labels.app",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-1",
+      "fieldKey": "spec.template.metadata.labels.app",
+      "manoValue": "test-app-1"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-1/spec.template.metadata.labels.version",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-1",
+      "fieldKey": "spec.template.metadata.labels.version",
+      "manoValue": "v1.1.0"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-1/spec.template.spec.containers[0].env[0].name",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-1",
+      "fieldKey": "spec.template.spec.containers[0].env[0].name",
+      "manoValue": "APP_INDEX"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-1/spec.template.spec.containers[0].env[0].value",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-1",
+      "fieldKey": "spec.template.spec.containers[0].env[0].value",
+      "manoValue": "1"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-1/spec.template.spec.containers[0].env[1].name",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-1",
+      "fieldKey": "spec.template.spec.containers[0].env[1].name",
+      "manoValue": "LOG_LEVEL"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-1/spec.template.spec.containers[0].env[1].valueFrom.configMapKeyRef.key",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-1",
+      "fieldKey": "spec.template.spec.containers[0].env[1].valueFrom.configMapKeyRef.key",
+      "manoValue": "app.loglevel"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-1/spec.template.spec.containers[0].env[1].valueFrom.configMapKeyRef.name",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-1",
+      "fieldKey": "spec.template.spec.containers[0].env[1].valueFrom.configMapKeyRef.name",
+      "manoValue": "test-config-1"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-1/spec.template.spec.containers[0].env[1].valueFrom.configMapKeyRef.optional",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-1",
+      "fieldKey": "spec.template.spec.containers[0].env[1].valueFrom.configMapKeyRef.optional",
+      "manoValue": "true"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-1/spec.template.spec.containers[0].image",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-1",
+      "fieldKey": "spec.template.spec.containers[0].image",
+      "manoValue": "nginx:1.22"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-1/spec.template.spec.containers[0].imagePullPolicy",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-1",
+      "fieldKey": "spec.template.spec.containers[0].imagePullPolicy",
+      "manoValue": "IfNotPresent"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-1/spec.template.spec.containers[0].name",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-1",
+      "fieldKey": "spec.template.spec.containers[0].name",
+      "manoValue": "app"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-1/spec.template.spec.containers[0].ports[0].containerPort",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-1",
+      "fieldKey": "spec.template.spec.containers[0].ports[0].containerPort",
+      "manoValue": "8080"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-1/spec.template.spec.containers[0].ports[0].protocol",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-1",
+      "fieldKey": "spec.template.spec.containers[0].ports[0].protocol",
+      "manoValue": "TCP"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-10/metadata.labels.app",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-10",
+      "fieldKey": "metadata.labels.app",
+      "manoValue": "test-app"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-10/metadata.labels.index",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-10",
+      "fieldKey": "metadata.labels.index",
+      "manoValue": "10"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-10/metadata.labels.version",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-10",
+      "fieldKey": "metadata.labels.version",
+      "manoValue": "v1.1.0"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-10/spec.replicas",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-10",
+      "fieldKey": "spec.replicas",
+      "manoValue": "0"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-10/spec.selector.matchLabels.app",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-10",
+      "fieldKey": "spec.selector.matchLabels.app",
+      "manoValue": "test-app-10"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-10/spec.strategy.rollingUpdate.maxSurge",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-10",
+      "fieldKey": "spec.strategy.rollingUpdate.maxSurge",
+      "manoValue": "25%"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-10/spec.strategy.rollingUpdate.maxUnavailable",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-10",
+      "fieldKey": "spec.strategy.rollingUpdate.maxUnavailable",
+      "manoValue": "25%"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-10/spec.strategy.type",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-10",
+      "fieldKey": "spec.strategy.type",
+      "manoValue": "RollingUpdate"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-10/spec.template.metadata.labels.app",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-10",
+      "fieldKey": "spec.template.metadata.labels.app",
+      "manoValue": "test-app-10"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-10/spec.template.metadata.labels.version",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-10",
+      "fieldKey": "spec.template.metadata.labels.version",
+      "manoValue": "v1.1.0"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-10/spec.template.spec.containers[0].env[0].name",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-10",
+      "fieldKey": "spec.template.spec.containers[0].env[0].name",
+      "manoValue": "APP_INDEX"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-10/spec.template.spec.containers[0].env[0].value",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-10",
+      "fieldKey": "spec.template.spec.containers[0].env[0].value",
+      "manoValue": "10"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-10/spec.template.spec.containers[0].env[1].name",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-10",
+      "fieldKey": "spec.template.spec.containers[0].env[1].name",
+      "manoValue": "LOG_LEVEL"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-10/spec.template.spec.containers[0].env[1].valueFrom.configMapKeyRef.key",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-10",
+      "fieldKey": "spec.template.spec.containers[0].env[1].valueFrom.configMapKeyRef.key",
+      "manoValue": "app.loglevel"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-10/spec.template.spec.containers[0].env[1].valueFrom.configMapKeyRef.name",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-10",
+      "fieldKey": "spec.template.spec.containers[0].env[1].valueFrom.configMapKeyRef.name",
+      "manoValue": "test-config-10"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-10/spec.template.spec.containers[0].env[1].valueFrom.configMapKeyRef.optional",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-10",
+      "fieldKey": "spec.template.spec.containers[0].env[1].valueFrom.configMapKeyRef.optional",
+      "manoValue": "true"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-10/spec.template.spec.containers[0].image",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-10",
+      "fieldKey": "spec.template.spec.containers[0].image",
+      "manoValue": "nginx:1.22"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-10/spec.template.spec.containers[0].imagePullPolicy",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-10",
+      "fieldKey": "spec.template.spec.containers[0].imagePullPolicy",
+      "manoValue": "IfNotPresent"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-10/spec.template.spec.containers[0].name",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-10",
+      "fieldKey": "spec.template.spec.containers[0].name",
+      "manoValue": "app"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-10/spec.template.spec.containers[0].ports[0].containerPort",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-10",
+      "fieldKey": "spec.template.spec.containers[0].ports[0].containerPort",
+      "manoValue": "8080"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Deployment/test-deployment-10/spec.template.spec.containers[0].ports[0].protocol",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Deployment",
+      "objectName": "test-deployment-10",
+      "fieldKey": "spec.template.spec.containers[0].ports[0].protocol",
+      "manoValue": "TCP"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Service/app-service/metadata.labels.app",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Service",
+      "objectName": "app-service",
+      "fieldKey": "metadata.labels.app",
+      "manoValue": "myapp"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Service/app-service/spec.ports[0].name",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Service",
+      "objectName": "app-service",
+      "fieldKey": "spec.ports[0].name",
+      "manoValue": "http"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Service/app-service/spec.ports[0].port",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Service",
+      "objectName": "app-service",
+      "fieldKey": "spec.ports[0].port",
+      "manoValue": "80"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Service/app-service/spec.ports[0].protocol",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Service",
+      "objectName": "app-service",
+      "fieldKey": "spec.ports[0].protocol",
+      "manoValue": "TCP"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Service/app-service/spec.ports[0].targetPort",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Service",
+      "objectName": "app-service",
+      "fieldKey": "spec.ports[0].targetPort",
+      "manoValue": "8080"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Service/app-service/spec.selector.app",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Service",
+      "objectName": "app-service",
+      "fieldKey": "spec.selector.app",
+      "manoValue": "myapp"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/Service/app-service/spec.type",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "Service",
+      "objectName": "app-service",
+      "fieldKey": "spec.type",
+      "manoValue": "ClusterIP"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/ConfigMap/app-config/data.app.json",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "ConfigMap",
+      "objectName": "app-config",
+      "fieldKey": "data.app.json",
+      "manoValue": "{\n  \"server\": {\n    \"port\": 8080,\n    \"host\": \"0.0.0.0\"\n  },\n  \"database\": {\n    \"host\": \"postgres.dev.svc.cluster.local\",\n    \"port\": 5432\n  }\n}"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/ConfigMap/app-config/data.single-line.json",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "ConfigMap",
+      "objectName": "app-config",
+      "fieldKey": "data.single-line.json",
+      "manoValue": "{\"key1\":\"value1\",\"key2\":\"value2\",\"nested\":{\"key3\":\"value3\"}}"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/ConfigMap/app-config/metadata.labels.app",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "ConfigMap",
+      "objectName": "app-config",
+      "fieldKey": "metadata.labels.app",
+      "manoValue": "myapp"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/ConfigMap/app-shell-config/metadata.labels.app",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "ConfigMap",
+      "objectName": "app-shell-config",
+      "fieldKey": "metadata.labels.app",
+      "manoValue": "demo"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/app-dev/ConfigMap/app-shell-config/data.init.sh",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "app-dev",
+      "kind": "ConfigMap",
+      "objectName": "app-shell-config",
+      "fieldKey": "data.init.sh",
+      "manoValue": "#!/bin/bash\nset -e\necho \"Initializing application...\"\nexport DB_HOST=postgres.dev.svc.cluster.local\nexport DB_PORT=5432\n/app/start.sh"
+    }
+  ],
+  "description": "CNF Checklist Validation - 1/23/2026, 2:10:31 PM",
+  "matchingStrategy": "value",
+  "ignoreFields": [
+    "metadata.namespace",
+    "status"
+  ]
+}

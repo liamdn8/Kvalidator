@@ -120,6 +120,9 @@ public class NamespaceComparator {
         Map<String, String> baselineFields = config != null ? baseline.getAllFieldsFiltered(config) : baseline.getAllFields();
         Map<String, String> actualFields = config != null ? actual.getAllFieldsFiltered(config) : actual.getAllFields();
         
+        // Track which baseline fields have been processed
+        Set<String> processedBaselineKeys = new HashSet<>();
+        
         // Only compare fields from baseline
         for (Map.Entry<String, String> baselineEntry : baselineFields.entrySet()) {
             String key = baselineEntry.getKey();
@@ -131,16 +134,55 @@ public class NamespaceComparator {
             item.setLeftValue(baselineValue);
             item.setRightValue(actualValue);
             
+            // Normalize values for comparison (handles ConfigMap data trailing newlines)
+            String normalizedBaseline = normalizeValue(key, baselineValue);
+            String normalizedActual = normalizeValue(key, actualValue);
+            
             // Determine comparison status
             if (actualValue == null) {
                 item.setStatus(ComparisonStatus.ONLY_IN_LEFT);
-            } else if (Objects.equals(baselineValue, actualValue)) {
+            } else if (Objects.equals(normalizedBaseline, normalizedActual)) {
                 item.setStatus(ComparisonStatus.MATCH);
             } else {
                 item.setStatus(ComparisonStatus.DIFFERENT);
             }
             
             comparison.addItem(item);
+            processedBaselineKeys.add(key);
+            
+            // CRITICAL FIX for Value Search: Include ALL runtime list items for flexible matching
+            // If this is a list field (contains [index]), add all other indices from runtime
+            // Example: baseline has env[0].name, runtime has env[0], env[1], env[2]
+            // We need to add env[1].name, env[2].name to comparison so Value Search can scan them
+            if (key.contains("[") && key.contains("]")) {
+                // Extract list pattern: "spec.template.spec.containers[0].image" -> "spec.template.spec.containers[*]"
+                int bracketStart = key.lastIndexOf("[");
+                int bracketEnd = key.indexOf("]", bracketStart);
+                
+                if (bracketStart > 0 && bracketEnd > bracketStart) {
+                    String prefix = key.substring(0, bracketStart + 1);  // e.g., "spec.containers["
+                    String suffix = key.substring(bracketEnd);           // e.g., "].name"
+                    
+                    // Find all runtime keys matching this pattern
+                    for (Map.Entry<String, String> actualEntry : actualFields.entrySet()) {
+                        String actualKey = actualEntry.getKey();
+                        
+                        // Check if this key matches the pattern but with different index
+                        if (actualKey.startsWith(prefix) && actualKey.endsWith(suffix) && !processedBaselineKeys.contains(actualKey)) {
+                            // Add this runtime item to comparison (with null baseline value)
+                            // This allows Value Search to scan ALL runtime items, not just baseline index
+                            KeyComparison extraItem = new KeyComparison();
+                            extraItem.setKey(actualKey);
+                            extraItem.setLeftValue(null);  // Not in baseline
+                            extraItem.setRightValue(actualEntry.getValue());
+                            extraItem.setStatus(ComparisonStatus.ONLY_IN_RIGHT);
+                            
+                            comparison.addItem(extraItem);
+                            processedBaselineKeys.add(actualKey);
+                        }
+                    }
+                }
+            }
         }
         
         return comparison;
@@ -210,6 +252,21 @@ public class NamespaceComparator {
         }
         
         return comparison;
+    }
+    
+    /**
+     * Normalize value for comparison (strip trailing newlines for ConfigMap data)
+     * Kubernetes ConfigMaps automatically add trailing newlines to data values
+     */
+    private static String normalizeValue(String fieldKey, String value) {
+        if (value == null) {
+            return null;
+        }
+        // For ConfigMap data fields, strip trailing newlines
+        if (fieldKey != null && fieldKey.startsWith("data.")) {
+            return value.replaceAll("\\n+$", "");
+        }
+        return value;
     }
     
     /**

@@ -150,6 +150,68 @@ public class CNFChecklistFileResource {
     }
 
     /**
+     * Upload and parse multiple Excel files
+     * Accepts a list of file contents and merges all items
+     */
+    @POST
+    @Path("/upload/excel/multiple")
+    @Consumes(MediaType.APPLICATION_JSON)
+    @Operation(summary = "Upload multiple Excel files", 
+               description = "Upload and parse multiple Excel files containing CNF checklist items. Duplicates will be removed.")
+    @APIResponses({
+        @APIResponse(responseCode = "200", 
+                     description = "Files parsed successfully",
+                     content = @Content(schema = @Schema(implementation = CNFChecklistUploadResponse.class))),
+        @APIResponse(responseCode = "400", description = "Invalid file format"),
+        @APIResponse(responseCode = "500", description = "Internal server error")
+    })
+    public Response uploadMultipleExcelFiles(MultipleFilesUploadRequest request) {
+        log.info("Received multiple Excel files upload, count: {}", 
+                 request != null && request.files != null ? request.files.size() : 0);
+        
+        try {
+            // Validate request
+            if (request == null || request.files == null || request.files.isEmpty()) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(createErrorResponse("No files provided"))
+                        .build();
+            }
+            
+            // Parse all Excel files
+            List<CNFChecklistItem> items = fileParser.parseMultipleExcelFiles(request.files);
+            
+            if (items.isEmpty()) {
+                return Response.status(Response.Status.BAD_REQUEST)
+                        .entity(createErrorResponse("No valid items found in any Excel file"))
+                        .build();
+            }
+            
+            log.info("Successfully parsed {} unique items from {} Excel files", 
+                     items.size(), request.files.size());
+            
+            CNFChecklistUploadResponse response = new CNFChecklistUploadResponse();
+            response.setSuccess(true);
+            response.setMessage("Successfully parsed " + items.size() + " unique items from " + 
+                              request.files.size() + " Excel files");
+            response.setItemCount(items.size());
+            response.setItems(items);
+            
+            return Response.ok(response).build();
+            
+        } catch (IOException e) {
+            log.error("Failed to parse Excel files", e);
+            return Response.status(Response.Status.BAD_REQUEST)
+                    .entity(createErrorResponse("Failed to parse Excel files: " + e.getMessage()))
+                    .build();
+        } catch (Exception e) {
+            log.error("Unexpected error processing Excel files", e);
+            return Response.status(Response.Status.INTERNAL_SERVER_ERROR)
+                    .entity(createErrorResponse("Unexpected error: " + e.getMessage()))
+                    .build();
+        }
+    }
+
+    /**
      * Download Excel template
      */
     @GET
@@ -194,6 +256,21 @@ public class CNFChecklistFileResource {
         error.put("success", false);
         error.put("error", message);
         return error;
+    }
+
+    /**
+     * Request for multiple files upload
+     */
+    public static class MultipleFilesUploadRequest {
+        public List<byte[]> files;
+
+        public List<byte[]> getFiles() {
+            return files;
+        }
+
+        public void setFiles(List<byte[]> files) {
+            this.files = files;
+        }
     }
 
     /**

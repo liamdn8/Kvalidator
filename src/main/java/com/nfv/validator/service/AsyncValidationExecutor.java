@@ -169,7 +169,8 @@ public class AsyncValidationExecutor {
                         .build());
                 
                 // Convert batch ValidationRequest to ValidationJobRequest
-                ValidationJobRequest jobRequest = convertBatchRequestToJobRequest(batchValidationRequest);
+                // Pass the entire batch request to merge global settings
+                ValidationJobRequest jobRequest = convertBatchRequestToJobRequest(batchValidationRequest, batchRequest);
                 
                 // Preserve CNF checklist request from batch
                 log.info("DEBUG: batchRequest.getCnfChecklistRequest() = {}", batchRequest.getCnfChecklistRequest());
@@ -279,7 +280,9 @@ public class AsyncValidationExecutor {
     /**
      * Convert batch ValidationRequest to ValidationJobRequest
      */
-    private ValidationJobRequest convertBatchRequestToJobRequest(com.nfv.validator.model.batch.ValidationRequest batchRequest) {
+    private ValidationJobRequest convertBatchRequestToJobRequest(
+            com.nfv.validator.model.batch.ValidationRequest batchRequest,
+            BatchValidationRequest batchValidationRequest) {
         ValidationJobRequest jobRequest = new ValidationJobRequest();
         jobRequest.setNamespaces(batchRequest.getNamespaces());
         jobRequest.setDescription(batchRequest.getName());
@@ -296,16 +299,44 @@ public class AsyncValidationExecutor {
             jobRequest.setKinds(batchRequest.getKinds());
         }
         
-        // Copy ignore fields from batch request
-        if (batchRequest.getIgnoreFields() != null) {
-            jobRequest.setIgnoreFields(new ArrayList<>(batchRequest.getIgnoreFields()));
+        // Merge ignore fields: start with global defaults, then add request-specific
+        List<String> mergedIgnoreFields = new ArrayList<>();
+        
+        log.info("DEBUG convertBatchRequestToJobRequest: batchValidationRequest={}, settings={}", 
+                 batchValidationRequest != null ? batchValidationRequest.getClass().getSimpleName() : "null",
+                 batchValidationRequest != null && batchValidationRequest.getSettings() != null ? "present" : "null");
+        
+        // Add global ignore fields from settings
+        if (batchValidationRequest.getSettings() != null && 
+            batchValidationRequest.getSettings().getIgnoreFields() != null) {
+            mergedIgnoreFields.addAll(batchValidationRequest.getSettings().getIgnoreFields());
+            log.info("Added {} global ignore fields from batch settings", 
+                     batchValidationRequest.getSettings().getIgnoreFields().size());
+        } else {
+            log.warn("No global ignore fields: settings={}, ignoreFields={}", 
+                    batchValidationRequest != null && batchValidationRequest.getSettings() != null ? "present" : "null",
+                    batchValidationRequest != null && batchValidationRequest.getSettings() != null && batchValidationRequest.getSettings().getIgnoreFields() != null ? "present" : "null");
         }
         
-        // Handle baseline if present (file-based)
-        if (batchRequest.getBaseline() != null && !batchRequest.getBaseline().trim().isEmpty()) {
-            // For now, we don't support file-based baseline from batch
-            // Could be enhanced later
-            log.warn("File-based baseline not yet supported in batch validation");
+        // Add request-specific ignore fields (can override or add to global)
+        if (batchRequest.getIgnoreFields() != null) {
+            for (String field : batchRequest.getIgnoreFields()) {
+                if (!mergedIgnoreFields.contains(field)) {
+                    mergedIgnoreFields.add(field);
+                }
+            }
+            log.info("Added {} request-specific ignore fields", batchRequest.getIgnoreFields().size());
+        }
+        
+        if (!mergedIgnoreFields.isEmpty()) {
+            jobRequest.setIgnoreFields(mergedIgnoreFields);
+            log.info("Total ignore fields for this validation: {}", mergedIgnoreFields.size());
+        }
+        
+        // Handle YAML content baseline (from frontend upload)
+        if (batchRequest.getBaselineYamlContent() != null && !batchRequest.getBaselineYamlContent().trim().isEmpty()) {
+            log.info("Using YAML content baseline ({} characters)", batchRequest.getBaselineYamlContent().length());
+            jobRequest.setBaselineYamlContent(batchRequest.getBaselineYamlContent());
         }
         
         // Handle flattened baseline (direct model)
@@ -337,11 +368,17 @@ public class AsyncValidationExecutor {
         
         // Merge with custom ignore fields from request if provided
         if (request.getIgnoreFields() != null && !request.getIgnoreFields().isEmpty()) {
+            log.info("Request contains {} ignore fields: {}", 
+                    request.getIgnoreFields().size(), request.getIgnoreFields());
             for (String customIgnoreField : request.getIgnoreFields()) {
                 validationConfig.addIgnoreField(customIgnoreField);
             }
             log.info("Added {} custom ignore fields from request. Total ignore rules: {}", 
                     request.getIgnoreFields().size(), validationConfig.getIgnoreFields().size());
+            log.info("All ignore patterns now active: {}", validationConfig.getIgnoreFields());
+        } else {
+            log.info("No custom ignore fields in request. Using default config with {} rules", 
+                    validationConfig.getIgnoreFields().size());
         }
         
         // Update progress
@@ -578,6 +615,12 @@ public class AsyncValidationExecutor {
                 // Normal baseline mode - compare all fields
                 log.info("Baseline comparison mode: comparing {} namespaces against baseline '{}'", 
                          namespaceModels.size() - 1, baselineModel.getName());
+                log.info("ValidationConfig has {} ignore rules: {}", 
+                         validationConfig.getIgnoreFields().size(), 
+                         validationConfig.getIgnoreFields());
+                log.info("UseSemanticComparison = {}", FeatureFlags.getInstance().isUseSemanticComparison());
+                log.info("ValidationConfig has {} ignore rules", validationConfig.getIgnoreFields().size());
+                log.info("UseSemanticComparison = {}", FeatureFlags.getInstance().isUseSemanticComparison());
                 
                 for (int i = 1; i < namespaceModels.size(); i++) {
                     FlatNamespaceModel ns = namespaceModels.get(i);

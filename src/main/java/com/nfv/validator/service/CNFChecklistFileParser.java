@@ -96,6 +96,60 @@ public class CNFChecklistFileParser {
     }
 
     /**
+     * Parse multiple Excel files and merge items
+     * Removes duplicates based on all fields
+     */
+    public List<CNFChecklistItem> parseMultipleExcelFiles(List<byte[]> fileContents) throws IOException {
+        log.info("Parsing {} Excel files", fileContents.size());
+        
+        List<CNFChecklistItem> allItems = new ArrayList<>();
+        int fileIndex = 0;
+        
+        for (byte[] fileContent : fileContents) {
+            fileIndex++;
+            try {
+                List<CNFChecklistItem> items = parseExcelFile(fileContent);
+                allItems.addAll(items);
+                log.info("File {}: parsed {} items", fileIndex, items.size());
+            } catch (IOException e) {
+                log.error("Failed to parse file {}", fileIndex, e);
+                throw new IOException("Error parsing file " + fileIndex + ": " + e.getMessage(), e);
+            }
+        }
+        
+        // Remove duplicates based on all fields
+        List<CNFChecklistItem> uniqueItems = new ArrayList<>();
+        for (CNFChecklistItem item : allItems) {
+            if (!isDuplicate(uniqueItems, item)) {
+                uniqueItems.add(item);
+            }
+        }
+        
+        int duplicatesRemoved = allItems.size() - uniqueItems.size();
+        log.info("Total items: {}, Unique items: {}, Duplicates removed: {}", 
+                 allItems.size(), uniqueItems.size(), duplicatesRemoved);
+        
+        return uniqueItems;
+    }
+
+    /**
+     * Check if an item already exists in the list (based on all fields)
+     */
+    private boolean isDuplicate(List<CNFChecklistItem> items, CNFChecklistItem newItem) {
+        for (CNFChecklistItem item : items) {
+            if (item.getVimName().equals(newItem.getVimName()) &&
+                item.getNamespace().equals(newItem.getNamespace()) &&
+                item.getKind().equals(newItem.getKind()) &&
+                item.getObjectName().equals(newItem.getObjectName()) &&
+                item.getFieldKey().equals(newItem.getFieldKey()) &&
+                item.getManoValue().equals(newItem.getManoValue())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
      * Parse a single Excel row to CNFChecklistItem
      */
     private CNFChecklistItem parseExcelRow(Row row, int rowIndex) {
@@ -289,5 +343,74 @@ public class CNFChecklistFileParser {
         row.createCell(3).setCellValue(objectName);
         row.createCell(4).setCellValue(fieldKey);
         row.createCell(5).setCellValue(manoValue);
+    }
+
+    /**
+     * Generate Excel file from CNF Checklist items
+     * 
+     * @param items List of CNF checklist items to export
+     * @return Excel file content as byte array
+     */
+    public byte[] generateExcelFromItems(List<CNFChecklistItem> items) throws IOException {
+        log.info("Generating Excel from {} CNF checklist items", items.size());
+        
+        if (items == null || items.isEmpty()) {
+            throw new IOException("No checklist items provided");
+        }
+        
+        try (Workbook workbook = new XSSFWorkbook()) {
+            Sheet sheet = workbook.createSheet("CNF Checklist");
+            
+            // Create header row
+            Row headerRow = sheet.createRow(0);
+            CellStyle headerStyle = createHeaderStyle(workbook);
+            
+            String[] headers = {
+                "VIM Name",
+                "Namespace",
+                "Kind",
+                "Object Name",
+                "Field Key",
+                "Expected Value (MANO)"
+            };
+            
+            for (int i = 0; i < headers.length; i++) {
+                Cell cell = headerRow.createCell(i);
+                cell.setCellValue(headers[i]);
+                cell.setCellStyle(headerStyle);
+                // Set column width based on header content
+                sheet.setColumnWidth(i, Math.max(5000, headers[i].length() * 256 + 500));
+            }
+            
+            // Add data rows
+            int rowNum = 1;
+            for (CNFChecklistItem item : items) {
+                Row row = sheet.createRow(rowNum++);
+                row.createCell(0).setCellValue(item.getVimName() != null ? item.getVimName() : "");
+                row.createCell(1).setCellValue(item.getNamespace() != null ? item.getNamespace() : "");
+                row.createCell(2).setCellValue(item.getKind() != null ? item.getKind() : "");
+                row.createCell(3).setCellValue(item.getObjectName() != null ? item.getObjectName() : "");
+                row.createCell(4).setCellValue(item.getFieldKey() != null ? item.getFieldKey() : "");
+                row.createCell(5).setCellValue(item.getManoValue() != null ? item.getManoValue() : "");
+            }
+            
+            // Set column widths manually (autoSizeColumn fails on headless servers)
+            // Column widths: VIM Name, Namespace, Kind, Object Name, Field Key, MANO Value
+            int[] columnWidths = {4000, 4000, 3500, 5000, 8000, 8000};
+            for (int i = 0; i < headers.length && i < columnWidths.length; i++) {
+                sheet.setColumnWidth(i, columnWidths[i]);
+            }
+            
+            // Write to byte array
+            java.io.ByteArrayOutputStream outputStream = new java.io.ByteArrayOutputStream();
+            workbook.write(outputStream);
+            
+            log.info("Excel file generated successfully with {} data rows", items.size());
+            return outputStream.toByteArray();
+            
+        } catch (Exception e) {
+            log.error("Failed to generate Excel from items", e);
+            throw new IOException("Failed to generate Excel file: " + e.getMessage(), e);
+        }
     }
 }

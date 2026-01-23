@@ -162,6 +162,10 @@ public class K8sDataCollector {
         // Flatten and set spec
         Map<String, String> flattenedSpec = flattenSpec(kubernetesObject);
         model.setSpec(flattenedSpec);
+        
+        // Flatten and set data (for ConfigMap, Secret, etc.)
+        Map<String, String> flattenedData = flattenData(kubernetesObject);
+        model.setData(flattenedData);
 
         return model;
     }
@@ -214,14 +218,43 @@ public class K8sDataCollector {
             if (specNode != null) {
                 flattenJsonNode("", specNode, flattened);
             }
-            
-            // Extract data node (for ConfigMap, Secret) - explicitly add "data" prefix
-            JsonNode dataNode = node.get("data");
-            if (dataNode != null) {
-                flattenJsonNode("data", dataNode, flattened);
-            }
         } catch (Exception e) {
             log.error("Failed to flatten spec for {}: {}", 
+                    kubernetesObject.getKind(), e.getMessage());
+        }
+
+        return flattened;
+    }
+    
+    /**
+     * Flatten Kubernetes object data (for ConfigMap, Secret, etc.)
+     */
+    private Map<String, String> flattenData(HasMetadata kubernetesObject) {
+        Map<String, String> flattened = new HashMap<>();
+
+        try {
+            // Convert object to JsonNode
+            JsonNode node = objectMapper.valueToTree(kubernetesObject);
+            
+            // Extract data node (for ConfigMap, Secret)
+            JsonNode dataNode = node.get("data");
+            if (dataNode != null) {
+                flattenJsonNode("", dataNode, flattened);
+            }
+            
+            // Extract binaryData node (for ConfigMap, Secret)
+            JsonNode binaryDataNode = node.get("binaryData");
+            if (binaryDataNode != null) {
+                flattenJsonNode("binaryData", binaryDataNode, flattened);
+            }
+            
+            // Extract stringData node (for Secret)
+            JsonNode stringDataNode = node.get("stringData");
+            if (stringDataNode != null) {
+                flattenJsonNode("stringData", stringDataNode, flattened);
+            }
+        } catch (Exception e) {
+            log.error("Failed to flatten data for {}: {}", 
                     kubernetesObject.getKind(), e.getMessage());
         }
 

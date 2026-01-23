@@ -31,6 +31,10 @@ public class FlatObjectModel {
     // e.g., "replicas": "3", "template.spec.containers[0].image": "nginx:1.19"
     private Map<String, String> spec;
     
+    // Data represented as key-value pairs (flattened) - for ConfigMap, Secret, etc.
+    // e.g., "application.yaml": "...", "config.json": "..."
+    private Map<String, String> data;
+    
     /**
      * Add a metadata entry
      */
@@ -52,7 +56,17 @@ public class FlatObjectModel {
     }
     
     /**
-     * Get all flattened fields (metadata + spec combined)
+     * Add a data entry (for ConfigMap, Secret, etc.)
+     */
+    public void addData(String key, String value) {
+        if (data == null) {
+            data = new HashMap<>();
+        }
+        data.put(key, value);
+    }
+    
+    /**
+     * Get all flattened fields (metadata + spec + data combined)
      */
     public Map<String, String> getAllFields() {
         Map<String, String> allFields = new HashMap<>();
@@ -68,8 +82,12 @@ public class FlatObjectModel {
                 allFields.put("spec." + entry.getKey(), entry.getValue());
             }
         }
-        
-        return allFields;
+                if (data != null) {
+            for (Map.Entry<String, String> entry : data.entrySet()) {
+                allFields.put("data." + entry.getKey(), entry.getValue());
+            }
+        }
+                return allFields;
     }
     
     /**

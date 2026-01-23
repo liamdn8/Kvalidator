@@ -1,0 +1,188 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: myapp
+    version: v1.1.0
+  name: app-deployment
+  namespace: app-dev
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: myapp
+  template:
+    metadata:
+      labels:
+        app: myapp
+        version: v1.1.0
+    spec:
+      containers:
+      - env:
+        - name: DB_HOST
+          valueFrom:
+            configMapKeyRef:
+              key: database.host
+              name: app-config
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: db-password
+              name: app-secret
+        image: nginx:1.22
+        imagePullPolicy: IfNotPresent
+        name: app
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: test-app
+    index: "1"
+    version: v1.1.0
+  name: test-deployment-1
+  namespace: app-dev
+spec:
+  replicas: 0
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: test-app-1
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: test-app-1
+        version: v1.1.0
+    spec:
+      containers:
+      - env:
+        - name: APP_INDEX
+          value: "1"
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              key: app.loglevel
+              name: test-config-1
+              optional: true
+        image: nginx:1.22
+        imagePullPolicy: IfNotPresent
+        name: app
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+        resources: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: test-app
+    index: "10"
+    version: v1.1.0
+  name: test-deployment-10
+  namespace: app-dev
+spec:
+  replicas: 0
+  selector:
+    matchLabels:
+      app: test-app-10
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: test-app-10
+        version: v1.1.0
+    spec:
+      containers:
+      - env:
+        - name: APP_INDEX
+          value: "10"
+        - name: LOG_LEVEL
+          valueFrom:
+            configMapKeyRef:
+              key: app.loglevel
+              name: test-config-10
+              optional: true
+        image: nginx:1.22
+        imagePullPolicy: IfNotPresent
+        name: app
+        ports:
+        - containerPort: 8080
+          protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: myapp
+  name: app-service
+  namespace: app-dev
+spec:
+  ports:
+  - name: http
+    port: 80
+    protocol: TCP
+    targetPort: 8080
+  selector:
+    app: myapp
+  type: ClusterIP
+---
+apiVersion: v1
+data:
+  app.loglevel: debug
+  database.host: postgres.dev.svc.cluster.local
+  extra.setting: new-value
+kind: ConfigMap
+metadata:
+  labels:
+    app: myapp
+  name: app-config
+  namespace: app-dev
+apiVersion: v1
+data:
+  app.json: |
+    {
+      "server": {
+        "port": 8080,
+        "host": "0.0.0.0"
+      },
+      "database": {
+        "host": "postgres.dev.svc.cluster.local",
+        "port": 5432
+      }
+    }
+  single-line.json: '{"key1":"value1","key2":"value2","nested":{"key3":"value3"}}'
+---
+kind: ConfigMap
+metadata:
+  labels:
+    app: demo
+  name: app-json-config
+  namespace: app-dev
+apiVersion: v1
+data:
+  init.sh: |
+    #!/bin/bash
+    set -e
+    echo "Initializing application..."
+    export DB_HOST=postgres.dev.svc.cluster.local
+    export DB_PORT=5432
+    /app/start.sh
+kind: ConfigMap
+metadata:
+  labels:
+    app: demo
+  name: app-shell-config
+  namespace: app-dev

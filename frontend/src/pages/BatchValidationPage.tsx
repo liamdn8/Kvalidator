@@ -1,15 +1,19 @@
 import { useState, useEffect, useRef } from 'react';
 import { Button, Card, Table, Space, Typography, App as AntApp, Tag, Spin, Progress, Statistic, Row, Col, Input, Collapse, Modal, Radio, Alert, Upload } from 'antd';
 import { PlayCircle, Trash2, CheckCircle, XCircle, Clock, BarChart3, Download, Edit2, Save, X, Settings, FileText, Upload as UploadIcon } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { NamespaceSearch } from '../components/NamespaceSearch';
+import { BaselineSelector } from '../components/BaselineSelector';
 import { ValidationResults } from '../components/ValidationResults';
 import { ValidationConfigEditor } from '../components/ValidationConfigEditor';
 import { FullValidationConfig } from '../components/FullValidationConfig';
 import { validationApi } from '../services/api';
 import type { ClusterNamespace, BatchValidationRequestItem, ValidationJobResponse, ValidationResultJson } from '../types';
 import { useLocation } from 'react-router-dom';
+// @ts-ignore
+import * as yaml from 'js-yaml';
 
-const { Title, Text } = Typography;
+const { Text } = Typography;
 
 export const BatchValidationPage = () => {
   const { message } = AntApp.useApp();
@@ -25,9 +29,17 @@ export const BatchValidationPage = () => {
   const [configViewMode, setConfigViewMode] = useState<'ui' | 'yaml'>('ui');
   const [yamlConfig, setYamlConfig] = useState('');
   const [viewMode, setViewMode] = useState<'form' | 'yaml'>('form');
+  const [pollingTimeoutModal, setPollingTimeoutModal] = useState(false);
+  const [timeoutCallback, setTimeoutCallback] = useState<(() => void) | null>(null);
+  const pollingStartTimeRef = useRef<number>(0);
 
   // Config form state
   const [configNamespaces, setConfigNamespaces] = useState<ClusterNamespace[]>([]);
+  const [configBaseline, setConfigBaseline] = useState<{
+    type?: 'yaml' | 'namespace';
+    yamlContent?: string;
+    selectedNamespaceIndex?: number;
+  }>({});
   const [configName, setConfigName] = useState<string>('');
   const [searchKeyword, setSearchKeyword] = useState<string>('');
   const [hasSearchResults, setHasSearchResults] = useState<boolean>(false);
@@ -53,10 +65,10 @@ export const BatchValidationPage = () => {
         // Poll individual jobs
         await pollIndividualJobs(jobId, (job.successfulCount || 0) + (job.failedCount || 0));
       } else {
-        // Continue polling if not completed
+        // Continue polling if not completed with extended timeout (30 minutes)
         const completedJob = await validationApi.pollJobStatus(jobId, (updatedJob) => {
           setJobStatus(updatedJob);
-        });
+        }, 900, 2000);
         setJobStatus(completedJob);
         await pollIndividualJobs(jobId, (completedJob.successfulCount || 0) + (completedJob.failedCount || 0));
       }
@@ -83,8 +95,19 @@ export const BatchValidationPage = () => {
   }, [configNamespaces, searchKeyword]);
 
   const handleSaveConfig = () => {
-    if (configNamespaces.length < 2) {
-      message.error('Please select at least 2 namespaces');
+    // Validation: need either 2+ namespaces OR baseline YAML
+    const hasBaseline = configBaseline.type === 'yaml' && 
+                        configBaseline.yamlContent && 
+                        configBaseline.yamlContent.trim().length > 0;
+    const hasMultipleNamespaces = configNamespaces.length >= 2;
+    
+    if (!hasMultipleNamespaces && !hasBaseline) {
+      message.error('Please select at least 2 namespaces OR upload a baseline YAML file');
+      return;
+    }
+    
+    if (hasBaseline && configNamespaces.length < 1) {
+      message.error('Please select at least 1 namespace to compare with baseline');
       return;
     }
 
@@ -96,7 +119,9 @@ export const BatchValidationPage = () => {
     const newItem: BatchValidationRequestItem = {
       name: configName.trim(),
       namespaces: configNamespaces.map(ns => `${ns.cluster}/${ns.namespace}`),
-      verbose: false
+      verbose: false,
+      type: hasBaseline ? 'baseline-comparison' : 'namespace-comparison',
+      baselineYamlContent: hasBaseline ? configBaseline.yamlContent : undefined
     };
 
     if (editingIndex >= 0) {
@@ -113,6 +138,9 @@ export const BatchValidationPage = () => {
     
     // Reset
     setConfigNamespaces([]);
+    setConfigName('');
+    setSearchKeyword('');
+    setConfigBaseline({type: 'namespace'});
     setEditingIndex(-1);
   };
 
@@ -121,6 +149,7 @@ export const BatchValidationPage = () => {
     setConfigName('');
     setSearchKeyword('');
     setEditingIndex(-1);
+    setConfigBaseline({type: 'namespace'});
   };
 
   const handleEditItem = (index: number) => {
@@ -133,6 +162,10 @@ export const BatchValidationPage = () => {
     setConfigNamespaces(parsedNamespaces);
     setConfigName(item.name);
     setEditingIndex(index);
+    setConfigBaseline({
+      type: item.type === 'baseline-comparison' ? 'yaml' : 'namespace',
+      yamlContent: item.baselineYamlContent
+    });
   };
 
   const handleDeleteItem = (index: number) => {
@@ -147,8 +180,31 @@ export const BatchValidationPage = () => {
       jobIds.push(`${batchJobId}-${i}`);
     }
 
+    pollingStartTimeRef.current = Date.now();
+    
+    const checkTimeout = () => {
+      const elapsed = Date.now() - pollingStartTimeRef.current;
+      if (elapsed > 1800000) { // 1800 seconds = 30 minutes
+        return true;
+      }
+      return false;
+    };
+
     // Poll each individual job
     const pollInterval = setInterval(async () => {
+      // Check timeout
+      if (checkTimeout()) {
+        clearInterval(pollInterval);
+        setPollingTimeoutModal(true);
+        setTimeoutCallback(() => () => {
+          // Reset timeout and continue polling
+          pollingStartTimeRef.current = Date.now();
+          setPollingTimeoutModal(false);
+          pollIndividualJobs(batchJobId, count);
+        });
+        return;
+      }
+      
       const updates = new Map(individualJobs);
       let allCompleted = true;
 
@@ -208,18 +264,23 @@ export const BatchValidationPage = () => {
     try {
       const response = await validationApi.submitBatchValidation({
         requests: items,
-        globalSettings: { parallel: true }
+        settings: { 
+          parallel: true,
+          ignoreFields: ignoreFields // Global ignore fields from UI
+        }
       });
       
       setJobStatus(response);
       message.success(`Batch job started: ${response.jobId}`);
       
-      // Start polling batch job status
+      // Start polling batch job status with extended timeout (30 minutes)
       const completedJob = await validationApi.pollJobStatus(
         response.jobId,
         (job) => {
           setJobStatus(job);
-        }
+        },
+        900, // 900 attempts
+        2000 // 2 seconds interval = 30 minutes total
       );
 
       setJobStatus(completedJob);
@@ -257,65 +318,72 @@ export const BatchValidationPage = () => {
 
 # List of validation items to execute
 validationItems:
-${items.map(item => `  - name: "${item.name}"
+${items.map(item => {
+  let itemYaml = `  - name: "${item.name}"
+    type: "${item.type || 'namespace-comparison'}"
     namespaces:
 ${item.namespaces.map(ns => `      - "${ns}"`).join('\n')}
-    verbose: ${item.verbose || false}`).join('\n')}
-# - name: "My Validation"
+    verbose: ${item.verbose || false}`;
+  
+  if (item.type === 'baseline-comparison' && item.baselineYamlContent) {
+    // Indent baseline YAML content properly
+    const indentedBaseline = item.baselineYamlContent
+      .split('\n')
+      .map(line => '      ' + line)
+      .join('\n');
+    itemYaml += `\n    baselineYamlContent: |\n${indentedBaseline}`;
+  }
+  
+  return itemYaml;
+}).join('\n')}
+# Example namespace comparison:
+# - name: "Dev vs Staging"
+#   type: "namespace-comparison"
 #   namespaces:
-#     - "cluster1/namespaceA"
-#     - "cluster2/namespaceB"
+#     - "cluster1/dev"
+#     - "cluster1/staging"
+#
+# Example baseline comparison:
+# - name: "Baseline Check"
+#   type: "baseline-comparison"
+#   namespaces:
+#     - "cluster1/production"
+#   baselineYamlContent: |
+#     apiVersion: v1
+#     kind: ConfigMap
+#     metadata:
+#       name: my-config
 
 # Fields to ignore during comparison (e.g., timestamps, dynamic values)
 ignoreFields:
 ${config.ignoreFields.map(f => `  - "${f}"`).join('\n')}`;
   };
 
-  const parseYamlToState = (yaml: string) => {
+  const parseYamlToState = (yamlContent: string) => {
     try {
-      const lines = yaml.split('\n');
-      const parsedItems: BatchValidationRequestItem[] = [];
-      const ignoreFieldsList: string[] = [];
-      let currentItem: Partial<BatchValidationRequestItem> = {};
-      let inIgnoreFields = false;
-      let inItems = false;
-      let inNamespaces = false;
+      const parsed: any = yaml.load(yamlContent);
       
-      for (const line of lines) {
-        const trimmed = line.trim();
-        if (trimmed.startsWith('ignoreFields:')) {
-          inIgnoreFields = true;
-          inItems = false;
-        } else if (trimmed.startsWith('validationItems:')) {
-          inIgnoreFields = false;
-          inItems = true;
-        } else if (trimmed.startsWith('- name:') && inItems) {
-          if (currentItem.name) {
-            parsedItems.push(currentItem as BatchValidationRequestItem);
-          }
-          currentItem = { name: trimmed.split('"')[1], namespaces: [], verbose: false };
-          inNamespaces = false;
-        } else if (trimmed.startsWith('namespaces:') && inItems) {
-          inNamespaces = true;
-        } else if (trimmed.startsWith('- "') && inIgnoreFields) {
-          ignoreFieldsList.push(trimmed.split('"')[1]);
-        } else if (trimmed.startsWith('- "') && inNamespaces) {
-          currentItem.namespaces = currentItem.namespaces || [];
-          currentItem.namespaces.push(trimmed.split('"')[1]);
-        } else if (trimmed.startsWith('verbose:') && inItems) {
-          currentItem.verbose = trimmed.includes('true');
-        }
+      if (!parsed || !parsed.validationItems) {
+        message.error('Invalid YAML: missing validationItems');
+        return;
       }
-      if (currentItem.name) {
-        parsedItems.push(currentItem as BatchValidationRequestItem);
-      }
+      
+      const parsedItems: BatchValidationRequestItem[] = parsed.validationItems.map((item: any) => ({
+        name: item.name,
+        namespaces: item.namespaces || [],
+        verbose: item.verbose || false,
+        type: item.type || 'namespace-comparison',
+        baselineYamlContent: item.baselineYamlContent
+      }));
+      
+      const ignoreFieldsList: string[] = parsed.ignoreFields || [];
       
       setItems(parsedItems);
       setIgnoreFields(ignoreFieldsList);
       message.success(`Loaded ${parsedItems.length} validation items and ${ignoreFieldsList.length} ignore fields from YAML`);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Failed to parse YAML:', error);
-      message.error('Failed to parse YAML configuration');
+      message.error(`Failed to parse YAML: ${error.message}`);
     }
   };
 
@@ -359,6 +427,295 @@ ${config.ignoreFields.map(f => `  - "${f}"`).join('\n')}`;
       console.error('Export failed:', error);
       message.error(error.message || 'Failed to export batch results');
     }
+  };
+
+  const exportToExcel = () => {
+    if (!jobStatus) return;
+
+    const workbook = XLSX.utils.book_new();
+    
+    // Calculate overall statistics
+    let totalValidations = items.length;
+    let totalObjects = 0;
+    let totalDifferences = 0;
+    let totalCompleted = 0;
+    
+    // Collect all validation results for summary and details
+    const summaryResults: any[] = [];
+    const allMismatchItems: any[] = [];
+    const allMatchItems: any[] = [];
+    
+    items.forEach((item, index) => {
+      const jobId = jobStatus ? `${jobStatus.jobId}-${index + 1}` : '';
+      const jobData = individualJobs.get(jobId);
+      const result = jobData?.result;
+      
+      if (!result) return;
+      
+      const objectsCompared = result.summary.totalObjects || 0;
+      const differences = result.summary.totalDifferences || 0;
+      const onRate = objectsCompared > 0 ? parseFloat(((objectsCompared - differences) / objectsCompared * 100).toFixed(1)) : 0;
+      
+      if (jobData?.status.status === 'COMPLETED') totalCompleted++;
+      totalObjects += objectsCompared;
+      totalDifferences += differences;
+      
+      const status = jobData.status.status === 'COMPLETED' ? (differences === 0 ? 'PASS' : 'FAIL') : jobData.status.status;
+      const resultText = `${objectsCompared - differences}/${objectsCompared} objects matched`;
+      
+      summaryResults.push({
+        name: item.name,
+        status: status,
+        result: resultText,
+        objects: objectsCompared,
+        differences: differences,
+        onRate: onRate,
+        namespaces: item.namespaces.join(', ')
+      });
+      
+      // Add detail items (both mismatch and match)
+      if (result.comparisons) {
+        Object.entries(result.comparisons).forEach(([nsKey, nsComp]: [string, any]) => {
+          if (nsComp.objectComparisons) {
+            Object.entries(nsComp.objectComparisons).forEach(([, objComp]: [string, any]) => {
+              const hasMatch = objComp.fullMatch === true;
+              
+              if (hasMatch) {
+                // Add to match items - collect all matched fields
+                // If we have matches array, use it; otherwise infer from object structure
+                if (objComp.matches && objComp.matches.length > 0) {
+                  objComp.matches.forEach((match: any) => {
+                    allMatchItems.push({
+                      validation: item.name,
+                      namespace: nsKey,
+                      objectType: objComp.objectType || '',
+                      objectId: objComp.objectId || '',
+                      field: match.key || match.field || 'unknown',
+                      leftValue: match.leftValue || match.value || '',
+                      rightValue: match.rightValue || match.value || '',
+                      status: 'MATCH'
+                    });
+                  });
+                } else {
+                  // Fallback: add a single entry for the matched object
+                  allMatchItems.push({
+                    validation: item.name,
+                    namespace: nsKey,
+                    objectType: objComp.objectType || '',
+                    objectId: objComp.objectId || '',
+                    field: 'ALL_FIELDS',
+                    leftValue: 'MATCHED',
+                    rightValue: 'MATCHED',
+                    status: 'MATCH'
+                  });
+                }
+              } else if (objComp.differences && objComp.differences.length > 0) {
+                // Add to mismatch items
+                objComp.differences.forEach((diff: any) => {
+                  allMismatchItems.push({
+                    validation: item.name,
+                    namespace: nsKey,
+                    objectType: objComp.objectType || '',
+                    objectId: objComp.objectId || '',
+                    field: diff.key,
+                    leftValue: diff.leftValue || '',
+                    rightValue: diff.rightValue || '',
+                    status: diff.status,
+                  });
+                });
+              }
+            });
+          }
+        });
+      }
+    });
+    
+    const overallOnRate = totalObjects > 0 ? parseFloat(((totalObjects - totalDifferences) / totalObjects * 100).toFixed(1)) : 0;
+    
+    // Sheet 1: Summary - Per-validation results
+    const summaryData = [
+      ['BATCH VALIDATION SUMMARY'],
+      [],
+      ['OVERALL STATISTICS'],
+      ['Total Validations:', totalValidations],
+      ['Total Completed:', totalCompleted],
+      ['Total Objects:', totalObjects],
+      ['Total Differences:', totalDifferences],
+      ['Overall ON Rate:', `${overallOnRate}%`],
+      [],
+      [],
+      ['VALIDATION RESULTS'],
+      ['Validation Name', 'Status', 'Result', 'Objects', 'Differences', 'ON Rate (%)', 'Namespaces']
+    ];
+    
+    // Add data rows
+    summaryResults.forEach((row) => {
+      summaryData.push([
+        row.name,
+        row.status,
+        row.result,
+        row.objects,
+        row.differences,
+        row.onRate,
+        row.namespaces
+      ]);
+    });
+    
+    const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+    
+    // Add background color to header row
+    const headerRow = 11;
+    const headerCells = ['A', 'B', 'C', 'D', 'E', 'F', 'G'];
+    headerCells.forEach(col => {
+      const cellRef = `${col}${headerRow + 1}`;
+      if (!summarySheet[cellRef]) summarySheet[cellRef] = {};
+      summarySheet[cellRef].s = {
+        fill: { fgColor: { rgb: "4472C4" } },
+        font: { bold: true, color: { rgb: "FFFFFF" } },
+        alignment: { horizontal: 'center', vertical: 'center' }
+      };
+    });
+    
+    // Add auto-filter to the table
+    const tableStartRow = 11;
+    const tableEndRow = tableStartRow + summaryResults.length;
+    summarySheet['!autofilter'] = { 
+      ref: `A${tableStartRow + 1}:G${tableEndRow + 1}` 
+    };
+    
+    // Set column widths for Summary sheet
+    summarySheet['!cols'] = [
+      { wch: 30 }, // Validation Name
+      { wch: 12 }, // Status
+      { wch: 30 }, // Result
+      { wch: 10 }, // Objects
+      { wch: 12 }, // Differences
+      { wch: 15 }, // ON Rate (%)
+      { wch: 50 }  // Namespaces
+    ];
+    
+    XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
+    
+    // Sheet 2: Details - Mismatch (differences only)
+    if (allMismatchItems.length > 0) {
+      const mismatchData = [
+        ['VALIDATION DETAILS - MISMATCHES ONLY'],
+        [],
+        ['Validation', 'Namespace', 'Object Type', 'Object ID', 'Field', 'Left Value', 'Right Value', 'Status']
+      ];
+      
+      // Add all mismatch items
+      allMismatchItems.forEach((item) => {
+        mismatchData.push([
+          item.validation,
+          item.namespace,
+          item.objectType,
+          item.objectId,
+          item.field,
+          item.leftValue,
+          item.rightValue,
+          item.status
+        ]);
+      });
+      
+      const mismatchSheet = XLSX.utils.aoa_to_sheet(mismatchData);
+      
+      // Add background color to header row
+      const mismatchHeaderRow = 2;
+      const mismatchHeaderCells = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+      mismatchHeaderCells.forEach(col => {
+        const cellRef = `${col}${mismatchHeaderRow + 1}`;
+        if (!mismatchSheet[cellRef]) mismatchSheet[cellRef] = {};
+        mismatchSheet[cellRef].s = {
+          fill: { fgColor: { rgb: "C65911" } },
+          font: { bold: true, color: { rgb: "FFFFFF" } },
+          alignment: { horizontal: 'center', vertical: 'center' }
+        };
+      });
+      
+      // Add auto-filter to the table
+      const mismatchTableStartRow = 2;
+      const mismatchTableEndRow = mismatchTableStartRow + allMismatchItems.length;
+      mismatchSheet['!autofilter'] = { 
+        ref: `A${mismatchTableStartRow + 1}:H${mismatchTableEndRow + 1}` 
+      };
+      
+      // Set column widths for Mismatch sheet
+      mismatchSheet['!cols'] = [
+        { wch: 25 }, // Validation
+        { wch: 30 }, // Namespace
+        { wch: 20 }, // Object Type
+        { wch: 40 }, // Object ID
+        { wch: 40 }, // Field
+        { wch: 30 }, // Left Value
+        { wch: 30 }, // Right Value
+        { wch: 20 }  // Status
+      ];
+      
+      XLSX.utils.book_append_sheet(workbook, mismatchSheet, 'Details - Mismatch');
+    }
+    
+    // Sheet 3: Details - Match (matched objects)
+    if (allMatchItems.length > 0) {
+      const matchData = [
+        ['VALIDATION DETAILS - MATCHES ONLY'],
+        [],
+        ['Validation', 'Namespace', 'Object Type', 'Object ID', 'Field', 'Left Value', 'Right Value', 'Status']
+      ];
+      
+      // Add all match items
+      allMatchItems.forEach((item) => {
+        matchData.push([
+          item.validation,
+          item.namespace,
+          item.objectType,
+          item.objectId,
+          item.field,
+          item.leftValue,
+          item.rightValue,
+          item.status
+        ]);
+      });
+      
+      const matchSheet = XLSX.utils.aoa_to_sheet(matchData);
+      
+      // Add background color to header row
+      const matchHeaderRow = 2;
+      const matchHeaderCells = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+      matchHeaderCells.forEach(col => {
+        const cellRef = `${col}${matchHeaderRow + 1}`;
+        if (!matchSheet[cellRef]) matchSheet[cellRef] = {};
+        matchSheet[cellRef].s = {
+          fill: { fgColor: { rgb: "70AD47" } },
+          font: { bold: true, color: { rgb: "FFFFFF" } },
+          alignment: { horizontal: 'center', vertical: 'center' }
+        };
+      });
+      
+      // Add auto-filter to the table
+      const matchTableStartRow = 2;
+      const matchTableEndRow = matchTableStartRow + allMatchItems.length;
+      matchSheet['!autofilter'] = { 
+        ref: `A${matchTableStartRow + 1}:H${matchTableEndRow + 1}` 
+      };
+      
+      // Set column widths for Match sheet
+      matchSheet['!cols'] = [
+        { wch: 25 }, // Validation
+        { wch: 30 }, // Namespace
+        { wch: 20 }, // Object Type
+        { wch: 40 }, // Object ID
+        { wch: 40 }, // Field
+        { wch: 30 }, // Left Value
+        { wch: 30 }, // Right Value
+        { wch: 20 }  // Status
+      ];
+      
+      XLSX.utils.book_append_sheet(workbook, matchSheet, 'Details - Match');
+    }
+
+    XLSX.writeFile(workbook, `batch-validation-results-${jobStatus.jobId}.xlsx`, { cellStyles: true, bookSST: true });
+    message.success('Excel report generated successfully');
   };
 
   const handleExportHTML = () => {
@@ -977,18 +1334,43 @@ ${config.ignoreFields.map(f => `  - "${f}"`).join('\n')}`;
       title: 'Name',
       dataIndex: 'name',
       key: 'name',
-      width: '30%',
+      width: '20%',
+    },
+    {
+      title: 'Type',
+      dataIndex: 'type',
+      key: 'type',
+      width: '12%',
+      render: (type: string) => (
+        <Tag color={type === 'baseline-comparison' ? 'blue' : 'green'}>
+          {type === 'baseline-comparison' ? 'Baseline' : 'Namespace'}
+        </Tag>
+      ),
+    },
+    {
+      title: 'Baseline',
+      key: 'baseline',
+      width: '18%',
+      render: (record: BatchValidationRequestItem) => {
+        if (record.type === 'baseline-comparison' && record.baselineYamlContent) {
+          return <Tag color="blue">YAML</Tag>;
+        } else if (record.namespaces && record.namespaces.length > 0) {
+          // First namespace is baseline for namespace comparison
+          return <Tag color="cyan">{record.namespaces[0]}</Tag>;
+        }
+        return <Text type="secondary">-</Text>;
+      },
     },
     {
       title: 'Namespaces',
       dataIndex: 'namespaces',
       key: 'namespaces',
       render: (namespaces: string[]) => (
-        <>
+        <Space size="small" wrap>
           {namespaces.map(ns => (
             <Tag key={ns}>{ns}</Tag>
           ))}
-        </>
+        </Space>
       ),
     },
     {
@@ -1037,7 +1419,15 @@ ${config.ignoreFields.map(f => `  - "${f}"`).join('\n')}`;
         const result = jobData?.result;
         
         const objectsCompared = result?.summary.totalObjects || 0;
+        const objectMatches = (result?.summary as any)?.matchedObjects || 0;
         const differences = result?.summary.totalDifferences || 0;
+        const objectMatchRate = objectsCompared > 0 ? ((objectMatches / objectsCompared) * 100) : 0;
+        
+        const fields = (result?.summary as any)?.totalFields || 0;
+        const fieldMatches = (result?.summary as any)?.matches || 0;
+        const ignored = (result?.summary as any)?.ignored || 0;
+        const fieldMatchRate = fields > 0 ? ((fieldMatches / fields) * 100) : 0;
+        
         const onRate = objectsCompared > 0 ? ((objectsCompared - differences) / objectsCompared * 100) : 0;
         const isOk = jobData?.status.status === 'COMPLETED' && differences === 0;
         
@@ -1053,139 +1443,135 @@ ${config.ignoreFields.map(f => `  - "${f}"`).join('\n')}`;
           status: jobData?.status.status || 'PENDING',
           okStatus: jobData?.status.status === 'COMPLETED' ? (isOk ? 'OK' : 'NOK') : '-',
           objectsCompared,
+          objectMatches,
+          objectMatchRate,
           differences,
+          fields,
+          fieldMatches,
+          ignored,
+          fieldMatchRate,
           onRate: onRate.toFixed(2),
           namespaces: item.namespaces.length,
         };
       });
 
-      const summaryColumns = [
-        {
-          title: 'Validation Name',
-          dataIndex: 'name',
-          key: 'name',
-        },
-        {
-          title: 'Status',
-          dataIndex: 'status',
-          key: 'status',
-          render: (status: string) => (
-            <Tag color={status === 'COMPLETED' ? 'success' : status === 'FAILED' ? 'error' : 'processing'}>
-              {status}
-            </Tag>
-          ),
-        },
-        {
-          title: 'Result',
-          dataIndex: 'okStatus',
-          key: 'okStatus',
-          render: (okStatus: string) => (
-            <Tag color={okStatus === 'OK' ? 'success' : okStatus === 'NOK' ? 'error' : 'default'}>
-              {okStatus}
-            </Tag>
-          ),
-        },
-        {
-          title: 'Objects',
-          dataIndex: 'objectsCompared',
-          key: 'objectsCompared',
-        },
-        {
-          title: 'Differences',
-          dataIndex: 'differences',
-          key: 'differences',
-          render: (diff: number) => (
-            <Text type={diff > 0 ? 'danger' : 'success'}>{diff}</Text>
-          ),
-        },
-        {
-          title: 'ON Rate (%)',
-          dataIndex: 'onRate',
-          key: 'onRate',
-          render: (rate: string) => {
-            const rateNum = parseFloat(rate);
-            return (
-              <Text type={rateNum === 100 ? 'success' : rateNum >= 80 ? 'warning' : 'danger'}>
-                {rate}%
-              </Text>
-            );
-          },
-        },
-        {
-          title: 'Namespaces',
-          dataIndex: 'namespaces',
-          key: 'namespaces',
-        },
-      ];
-
       const overallOnRate = totalObjects > 0 ? ((totalObjects - totalDifferences) / totalObjects * 100) : 0;
 
       return (
         <>
-          {/* Summary Statistics */}
-          <Row gutter={[16, 16]}>
-            <Col span={4}>
-              <Card size="small">
-                <Statistic 
-                  title="Total Validations" 
-                  value={items.length}
-                  valueStyle={{ color: '#1890ff' }}
-                />
+          {/* Summary Statistics - Improved Layout */}
+          <Row gutter={[16, 16]} style={{ marginBottom: 24 }}>
+            {/* Job Statistics Group */}
+            <Col xs={24} sm={12} lg={8}>
+              <Card 
+                size="small" 
+                title={<span style={{ fontSize: 13, fontWeight: 600, color: '#595959' }}>Job Statistics</span>}
+                headStyle={{ minHeight: 40, padding: '8px 12px', background: '#fafafa' }}
+                bodyStyle={{ padding: 16 }}
+              >
+                <Row gutter={[12, 12]}>
+                  <Col span={12}>
+                    <Statistic 
+                      title="Total Validations" 
+                      value={items.length}
+                      valueStyle={{ color: '#1890ff', fontSize: 20 }}
+                    />
+                  </Col>
+                  <Col span={12}>
+                    <Statistic 
+                      title="Completed" 
+                      value={totalCompleted} 
+                      valueStyle={{ color: '#3f8600', fontSize: 20 }}
+                    />
+                  </Col>
+                </Row>
               </Card>
             </Col>
-            <Col span={4}>
-              <Card size="small">
-                <Statistic 
-                  title="Completed" 
-                  value={totalCompleted} 
-                  valueStyle={{ color: '#3f8600' }}
-                />
+
+            {/* Status Statistics Group */}
+            <Col xs={24} sm={12} lg={8}>
+              <Card 
+                size="small" 
+                title={<span style={{ fontSize: 13, fontWeight: 600, color: '#595959' }}>Status Statistics</span>}
+                headStyle={{ minHeight: 40, padding: '8px 12px', background: '#fafafa' }}
+                bodyStyle={{ padding: 16 }}
+              >
+                <Row gutter={[12, 12]}>
+                  <Col span={12}>
+                    <Statistic 
+                      title="Processing" 
+                      value={totalProcessing}
+                      valueStyle={{ color: '#1890ff', fontSize: 20 }}
+                    />
+                  </Col>
+                  <Col span={12}>
+                    <Statistic 
+                      title="Failed" 
+                      value={totalFailed}
+                      valueStyle={{ color: '#cf1322', fontSize: 20 }}
+                    />
+                  </Col>
+                </Row>
               </Card>
             </Col>
-            <Col span={4}>
-              <Card size="small">
-                <Statistic 
-                  title="Processing" 
-                  value={totalProcessing} 
-                  valueStyle={{ color: '#faad14' }}
-                />
-              </Card>
-            </Col>
-            <Col span={4}>
-              <Card size="small">
-                <Statistic 
-                  title="Failed" 
-                  value={totalFailed} 
-                  valueStyle={{ color: totalFailed > 0 ? '#cf1322' : undefined }}
-                />
-              </Card>
-            </Col>
-            <Col span={4}>
-              <Card size="small">
-                <Statistic title="Total Objects" value={totalObjects} />
-              </Card>
-            </Col>
-            <Col span={4}>
-              <Card size="small">
-                <Statistic 
-                  title="Total Differences" 
-                  value={totalDifferences} 
-                  valueStyle={{ color: totalDifferences > 0 ? '#cf1322' : '#3f8600' }}
-                />
+
+            {/* Object Statistics Group */}
+            <Col xs={24} sm={24} lg={8}>
+              <Card 
+                size="small" 
+                title={<span style={{ fontSize: 13, fontWeight: 600, color: '#595959' }}>Object Statistics</span>}
+                headStyle={{ minHeight: 40, padding: '8px 12px', background: '#fafafa' }}
+                bodyStyle={{ padding: 16 }}
+              >
+                <Row gutter={[12, 12]}>
+                  <Col span={8}>
+                    <Statistic 
+                      title="Total Objects" 
+                      value={totalObjects}
+                      valueStyle={{ color: '#1890ff', fontSize: 16 }}
+                    />
+                  </Col>
+                  <Col span={8}>
+                    <Statistic 
+                      title="Obj Matches" 
+                      value={totalObjects - totalDifferences}
+                      valueStyle={{ color: '#3f8600', fontSize: 16 }}
+                    />
+                  </Col>
+                  <Col span={8}>
+                    <Statistic 
+                      title="Obj Diffs" 
+                      value={totalDifferences}
+                      valueStyle={{ color: totalDifferences > 0 ? '#cf1322' : '#3f8600', fontSize: 16 }}
+                    />
+                  </Col>
+                </Row>
               </Card>
             </Col>
           </Row>
 
-          <Row gutter={16}>
+          {/* Overall ON Rate - Highlighted */}
+          <Row style={{ marginBottom: 24 }}>
             <Col span={24}>
-              <Card size="small">
+              <Card 
+                size="small"
+                style={{ 
+                  background: overallOnRate >= 80 
+                    ? 'linear-gradient(135deg, #f6ffed 0%, #f0f9ff 100%)' 
+                    : overallOnRate >= 50 
+                    ? 'linear-gradient(135deg, #fffbf0 0%, #fff7e6 100%)' 
+                    : 'linear-gradient(135deg, #fff1f0 0%, #ffebee 100%)',
+                  border: `2px solid ${overallOnRate >= 80 ? '#b7eb8f' : overallOnRate >= 50 ? '#ffd591' : '#ffa39e'}`
+                }}
+              >
                 <Statistic 
-                  title="Overall ON Rate" 
-                  value={overallOnRate.toFixed(2)} 
-                  suffix="%" 
+                  title={<span style={{ fontSize: 14, fontWeight: 600 }}>Overall ON Rate</span>}
+                  value={overallOnRate.toFixed(2)}
+                  suffix="%"
                   valueStyle={{ 
-                    color: overallOnRate === 100 ? '#3f8600' : overallOnRate >= 80 ? '#faad14' : '#cf1322',
-                    fontSize: '32px'
+                    color: overallOnRate >= 80 ? '#3f8600' : overallOnRate >= 50 ? '#faad14' : '#cf1322',
+                    fontSize: '36px',
+                    fontWeight: 'bold'
                   }}
                 />
               </Card>
@@ -1194,11 +1580,117 @@ ${config.ignoreFields.map(f => `  - "${f}"`).join('\n')}`;
 
           {/* Validation Items Table */}
           <div style={{ marginTop: '24px' }}>
-            <Title level={5}>Validation Items</Title>
-            <Table 
-              dataSource={summaryData} 
-              columns={summaryColumns} 
+            <Typography.Title level={5}>Validation Items</Typography.Title>
+            <Table
+              dataSource={summaryData}
               pagination={false}
+              size="small"
+              style={{ marginTop: 16 }}
+              onRow={(_record, index) => ({
+                onClick: () => {
+                  setActiveTab(String(index));
+                  setTimeout(() => {
+                    resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }, 100);
+                },
+                style: { cursor: 'pointer' }
+              })}
+              columns={[
+                {
+                  title: 'Validation Name',
+                  dataIndex: 'name',
+                  key: 'name',
+                  render: (text: string) => <strong>{text}</strong>
+                },
+                {
+                  title: 'Status',
+                  dataIndex: 'status',
+                  key: 'status',
+                  render: (status: string) => (
+                    <Tag color={status === 'COMPLETED' ? 'success' : status === 'FAILED' ? 'error' : 'processing'}>
+                      {status}
+                    </Tag>
+                  ),
+                },
+                {
+                  title: 'Result',
+                  dataIndex: 'okStatus',
+                  key: 'okStatus',
+                  render: (okStatus: string) => (
+                    <Tag color={okStatus === 'OK' ? 'success' : okStatus === 'NOK' ? 'error' : 'default'}>
+                      {okStatus}
+                    </Tag>
+                  ),
+                },
+                {
+                  title: 'Objects',
+                  dataIndex: 'objectsCompared',
+                  key: 'objectsCompared',
+                  align: 'center' as const,
+                  width: 100,
+                },
+                {
+                  title: 'Obj Matches',
+                  dataIndex: 'objectMatches',
+                  key: 'objectMatches',
+                  align: 'center' as const,
+                  width: 120,
+                  render: (value: number) => (
+                    <span style={{ color: '#3f8600' }}>{value}</span>
+                  )
+                },
+                {
+                  title: 'Obj Match Rate (%)',
+                  dataIndex: 'objectMatchRate',
+                  key: 'objectMatchRate',
+                  align: 'center' as const,
+                  width: 150,
+                  render: (rate: number) => (
+                    <Text type={rate >= 80 ? 'success' : rate >= 50 ? 'warning' : 'danger'}>
+                      {rate.toFixed(1)}%
+                    </Text>
+                  )
+                },
+                {
+                  title: 'Fields',
+                  dataIndex: 'fields',
+                  key: 'fields',
+                  align: 'center' as const,
+                  width: 100,
+                },
+                {
+                  title: 'Field Matches',
+                  dataIndex: 'fieldMatches',
+                  key: 'fieldMatches',
+                  align: 'center' as const,
+                  width: 120,
+                  render: (value: number) => (
+                    <span style={{ color: '#3f8600' }}>{value}</span>
+                  )
+                },
+                {
+                  title: 'Ignored',
+                  dataIndex: 'ignored',
+                  key: 'ignored',
+                  align: 'center' as const,
+                  width: 100,
+                  render: (value: number) => (
+                    <span style={{ color: 'rgb(75, 152, 252)' }}>{value || 0}</span>
+                  )
+                },
+                {
+                  title: 'Field Match Rate (%)',
+                  dataIndex: 'fieldMatchRate',
+                  key: 'fieldMatchRate',
+                  align: 'center' as const,
+                  width: 160,
+                  render: (rate: number) => (
+                    <Text type={rate >= 80 ? 'success' : rate >= 50 ? 'warning' : 'danger'}>
+                      {rate.toFixed(1)}%
+                    </Text>
+                  )
+                },
+              ]}
             />
           </div>
         </>
@@ -1329,15 +1821,28 @@ ${config.ignoreFields.map(f => `  - "${f}"`).join('\n')}`;
           }
         >
           <Space direction="vertical" style={{ width: '100%' }} size="middle">
+            <Card title="1. Search & Select Namespaces">
+              <div>
+                <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+                  {configBaseline.type === 'yaml' 
+                    ? 'Select at least 1 namespace to compare with baseline' 
+                    : 'Select at least 2 namespaces to compare'}
+                </Text>
+                <NamespaceSearch
+                  onSearchKeywordChange={setSearchKeyword}
+                  selectedNamespaces={configNamespaces}
+                  onNamespacesChange={setConfigNamespaces}
+                  onSearchResultsChange={setHasSearchResults}
+                />
+              </div>
+            </Card>
+
             <div>
-              <Text strong style={{ display: 'block', marginBottom: 8 }}>
-                Select Namespaces (minimum 2 required):
-              </Text>
-              <NamespaceSearch 
-                onSearchKeywordChange={setSearchKeyword}
+              <BaselineSelector
                 selectedNamespaces={configNamespaces}
-                onNamespacesChange={setConfigNamespaces}
-                onSearchResultsChange={setHasSearchResults}
+                onBaselineChange={(baseline) => {
+                  setConfigBaseline(baseline);
+                }}
               />
             </div>
             
@@ -1348,28 +1853,41 @@ ${config.ignoreFields.map(f => `  - "${f}"`).join('\n')}`;
                 </Text>
                 <Input
                   size="large"
-                  placeholder="e.g. Dev vs Staging"
+                  placeholder="e.g. Dev vs Staging or Baseline Check"
                   value={configName}
                   onChange={(e) => setConfigName(e.target.value)}
-                  disabled={configNamespaces.length < 2}
                 />
-                {configNamespaces.length >= 2 && (
-                  <Text type="secondary" style={{ fontSize: '12px', marginTop: 4, display: 'block' }}>
-                    Auto-generated from selected namespaces. You can customize it.
-                  </Text>
-                )}
+                <Text type="secondary" style={{ fontSize: '12px', marginTop: 4, display: 'block' }}>
+                  Auto-generated from selected namespaces. You can customize it.
+                </Text>
               </div>
             )}
             
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8 }}>
               <Text type="secondary">
-                {configNamespaces.length >= 2 ? (
-                  <span style={{ color: '#52c41a' }}>
-                    ✓ Ready to add
-                  </span>
-                ) : (
-                  `Selected: ${configNamespaces.length} namespace${configNamespaces.length !== 1 ? 's' : ''}`
-                )}
+                {(() => {
+                  const hasBaseline = configBaseline.type === 'yaml' && 
+                                     configBaseline.yamlContent && 
+                                     configBaseline.yamlContent.trim().length > 0;
+                  const hasMultipleNamespaces = configNamespaces.length >= 2;
+                  const hasNamespace = configNamespaces.length >= 1;
+                  
+                  if (hasBaseline && hasNamespace) {
+                    return (
+                      <span style={{ color: '#52c41a' }}>
+                        ✓ Ready to add (Baseline YAML vs {configNamespaces.length} namespace{configNamespaces.length !== 1 ? 's' : ''})
+                      </span>
+                    );
+                  } else if (hasMultipleNamespaces) {
+                    return (
+                      <span style={{ color: '#52c41a' }}>
+                        ✓ Ready to add (Namespace Comparison: {configNamespaces.length} namespaces)
+                      </span>
+                    );
+                  } else {
+                    return `Need: 2+ namespaces OR baseline YAML`;
+                  }
+                })()}
               </Text>
               <Space>
                 {editingIndex >= 0 && (
@@ -1381,7 +1899,16 @@ ${config.ignoreFields.map(f => `  - "${f}"`).join('\n')}`;
                   type="primary"
                   icon={<Save size={16} />}
                   onClick={handleSaveConfig}
-                  disabled={configNamespaces.length < 2}
+                  disabled={(() => {
+                    const hasBaseline = configBaseline.type === 'yaml' && 
+                                       configBaseline.yamlContent && 
+                                       configBaseline.yamlContent.trim().length > 0;
+                    const hasMultipleNamespaces = configNamespaces.length >= 2;
+                    const hasNamespace = configNamespaces.length >= 1;
+                    
+                    // Can add if: (2+ namespaces) OR (baseline + 1+ namespace)
+                    return !(hasMultipleNamespaces || (hasBaseline && hasNamespace));
+                  })()}
                 >
                   {editingIndex >= 0 ? 'Update' : 'Add to Batch'}
                 </Button>
@@ -1597,12 +2124,18 @@ ${config.ignoreFields.map(f => `  - "${f}"`).join('\n')}`;
                 <Space>
                   <Button 
                     icon={<Download size={16} />}
+                    onClick={exportToExcel}
+                    type="primary"
+                  >
+                    Export Excel
+                  </Button>
+                  <Button 
+                    icon={<Download size={16} />}
                     onClick={handleExportHTML}
                   >
                     Export HTML
                   </Button>
                   <Button 
-                    type="primary" 
                     icon={<Download size={16} />}
                     onClick={handleExportAll}
                   >
@@ -1716,6 +2249,31 @@ ${config.ignoreFields.map(f => `  - "${f}"`).join('\n')}`;
             message.info('Full config import for batch validation - feature coming soon');
             setFullConfigModalVisible(false);
           }}
+        />
+      </Modal>
+      
+      {/* Polling Timeout Modal */}
+      <Modal
+        title="Validation Timeout"
+        open={pollingTimeoutModal}
+        onOk={() => {
+          if (timeoutCallback) {
+            timeoutCallback();
+          }
+        }}
+        onCancel={() => {
+          setPollingTimeoutModal(false);
+          setLoading(false);
+          message.warning('Polling cancelled by user');
+        }}
+        okText="Continue Waiting (5 more minutes)"
+        cancelText="Stop"
+      >
+        <Alert
+          message="The validation has been running for more than 5 minutes."
+          description="Do you want to continue waiting for another 5 minutes?"
+          type="warning"
+          showIcon
         />
       </Modal>
       </div>

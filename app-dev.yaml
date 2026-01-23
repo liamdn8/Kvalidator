@@ -1,0 +1,151 @@
+apiVersion: v1
+items:
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    labels:
+      app: myapp
+      version: v1.1.0
+    name: app-deployment
+    namespace: app-dev
+  spec:
+    selector:
+      matchLabels:
+        app: myapp
+    template:
+      metadata:
+        labels:
+          app: myapp
+          version: v1.1.0
+      spec:
+        containers:
+        - env:
+          - name: DB_HOST
+            valueFrom:
+              configMapKeyRef:
+                key: database.host
+                name: app-config
+          - name: DB_PASSWORD
+            valueFrom:
+              secretKeyRef:
+                key: db-password
+                name: app-secret
+          image: nginx:1.22
+          imagePullPolicy: IfNotPresent
+          name: app
+          ports:
+          - containerPort: 8080
+            protocol: TCP
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    labels:
+      app: test-app
+      index: "1"
+      version: v1.1.0
+    name: test-deployment-1
+    namespace: app-dev
+  spec:
+    replicas: 3
+    selector:
+      matchLabels:
+        app: test-app-1
+    template:
+      metadata:
+        labels:
+          app: test-app-1
+          version: v1.1.0
+      spec:
+        containers:
+        - env:
+          - name: APP_INDEX
+            value: "1"
+          - name: LOG_LEVEL
+            valueFrom:
+              configMapKeyRef:
+                key: app.loglevel
+                name: test-config-1
+                optional: true
+          image: nginx:1.22
+          imagePullPolicy: IfNotPresent
+          name: app
+          ports:
+          - containerPort: 8080
+            protocol: TCP
+          resources: {}
+- apiVersion: apps/v1
+  kind: Deployment
+  metadata:
+    labels:
+      app: test-app
+      index: "10"
+      version: v1.1.0
+    name: test-deployment-10
+    namespace: app-dev
+  spec:
+    replicas: 3
+    selector:
+      matchLabels:
+        app: test-app-10
+    template:
+      metadata:
+        labels:
+          app: test-app-10
+          version: v1.1.0
+      spec:
+        containers:
+        - env:
+          - name: APP_INDEX
+            value: "10"
+          - name: LOG_LEVEL
+            valueFrom:
+              configMapKeyRef:
+                key: app.loglevel
+                name: test-config-10
+                optional: true
+          image: nginx:1.22
+          imagePullPolicy: IfNotPresent
+          name: app
+          ports:
+          - containerPort: 8080
+            protocol: TCP
+- apiVersion: v1
+  data:
+    app.debug: "true"
+    app.loglevel: warn
+    cache.ttl: "60"
+    feature.flag.48: enabled
+    index: "48"
+  kind: ConfigMap
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","data":{"app.debug":"true","app.loglevel":"warn","cache.ttl":"60","feature.flag.48":"enabled","index":"48"},"kind":"ConfigMap","metadata":{"annotations":{},"labels":{"app":"test-app","index":"48"},"name":"test-config-48","namespace":"app-dev"}}
+    creationTimestamp: "2026-01-10T02:32:08Z"
+    labels:
+      app: test-app
+      index: "48"
+    name: test-config-48
+    namespace: app-dev
+    resourceVersion: "181089"
+    uid: eb0ce952-a78a-44f0-bd1c-0ebce4a997b7
+- apiVersion: v1
+  data:
+    app.debug: "true"
+    app.loglevel: debug
+    cache.ttl: "60"
+    feature.flag.49: enabled
+    index: "49"
+  kind: ConfigMap
+  metadata:
+    annotations:
+      kubectl.kubernetes.io/last-applied-configuration: |
+        {"apiVersion":"v1","data":{"app.debug":"true","app.loglevel":"debug","cache.ttl":"60","feature.flag.49":"enabled","index":"49"},"kind":"ConfigMap","metadata":{"annotations":{},"labels":{"app":"test-app","index":"49"},"name":"test-config-49","namespace":"app-dev"}}
+    creationTimestamp: "2026-01-10T02:32:08Z"
+    labels:
+      app: test-app
+      index: "49"
+    name: test-config-49
+    namespace: app-dev
+    resourceVersion: "181091"
+    uid: d60937ad-3388-4310-afe8-883605749cc1

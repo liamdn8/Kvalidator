@@ -159,16 +159,34 @@ public class YamlDataCollectorV2 {
                 spec = new HashMap<>((Map<String, Object>) specObj);
             }
         }
+        obj.setSpec(spec);
         
-        // For ConfigMap/Secret, include data
+        // Store data as separate field (for ConfigMap, Secret, etc.)
+        Map<String, Object> data = new HashMap<>();
         if (doc.containsKey("data")) {
             Object dataObj = doc.get("data");
             if (dataObj instanceof Map) {
-                spec.put("data", new HashMap<>((Map<String, Object>) dataObj));
+                data.putAll((Map<String, Object>) dataObj);
             }
         }
         
-        obj.setSpec(spec);
+        // Include binaryData
+        if (doc.containsKey("binaryData")) {
+            Object binaryDataObj = doc.get("binaryData");
+            if (binaryDataObj instanceof Map) {
+                data.put("binaryData", new HashMap<>((Map<String, Object>) binaryDataObj));
+            }
+        }
+        
+        // Include stringData (for Secret)
+        if (doc.containsKey("stringData")) {
+            Object stringDataObj = doc.get("stringData");
+            if (stringDataObj instanceof Map) {
+                data.put("stringData", new HashMap<>((Map<String, Object>) stringDataObj));
+            }
+        }
+        
+        obj.setData(data.isEmpty() ? null : data);
         
         log.debug("[V2] Converted {} '{}' (semantic mode)", kind, name);
         

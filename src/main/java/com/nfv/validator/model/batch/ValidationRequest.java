@@ -42,6 +42,12 @@ public class ValidationRequest {
      */
     private String baseline;
     
+    /**
+     * YAML content as string (alternative to baseline file path)
+     * If provided, this takes precedence over baseline file path
+     */
+    private String baselineYamlContent;
+    
     /**     * Flattened baseline model for direct comparison (alternative to baseline file)
      * Used when converting CNF checklists to avoid YAML file creation
      */
@@ -123,9 +129,11 @@ public class ValidationRequest {
             );
         }
         
-        if ("baseline-comparison".equals(type) && (baseline == null || baseline.trim().isEmpty())) {
+        if ("baseline-comparison".equals(type) && 
+            (baseline == null || baseline.trim().isEmpty()) && 
+            (baselineYamlContent == null || baselineYamlContent.trim().isEmpty())) {
             throw new IllegalArgumentException(
-                "Baseline path is required for baseline-comparison type in: " + name
+                "Baseline path or YAML content is required for baseline-comparison type in: " + name
             );
         }
     }

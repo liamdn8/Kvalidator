@@ -1,3 +1,9 @@
-com/nfv/validator/KValidatorApplicationTest.class
+com/nfv/validator/test/TestConfigMapDataParsing.class
 com/nfv/validator/service/SemanticComparisonDemo.class
+com/nfv/validator/test/TestComparisonV2WithData.class
+com/nfv/validator/KValidatorApplicationTest.class
+com/nfv/validator/test/TestIgnoreFields.class
+com/nfv/validator/test/TestYamlDataCollectorV2.class
+com/nfv/validator/test/TestComparisonWithData.class
 com/nfv/validator/kubernetes/K8sDataCollectorTest.class
+com/nfv/validator/service/BatchValidationIgnoreFieldsTest.class

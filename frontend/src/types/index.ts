@@ -15,13 +15,17 @@ export interface BatchValidationRequestItem {
   name: string;
   namespaces: string[];
   verbose?: boolean;
+  type?: 'namespace-comparison' | 'baseline-comparison';
+  baseline?: string; // Path to baseline file
+  baselineYamlContent?: string; // YAML content as string
 }
 
 export interface BatchValidationRequest {
   requests: BatchValidationRequestItem[];
-  globalSettings?: {
+  settings?: {
     parallel?: boolean;
     outputDir?: string;
+    ignoreFields?: string[];
   };
 }
 

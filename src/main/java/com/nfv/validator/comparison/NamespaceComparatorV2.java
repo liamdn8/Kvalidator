@@ -100,6 +100,7 @@ public class NamespaceComparatorV2 {
         // Both exist - perform semantic deep comparison
         compareNestedStructure("metadata", left.getMetadata(), right.getMetadata(), comparison, config);
         compareNestedStructure("spec", left.getSpec(), right.getSpec(), comparison, config);
+        compareNestedStructure("data", left.getData(), right.getData(), comparison, config);
         
         return comparison;
     }
@@ -118,6 +119,7 @@ public class NamespaceComparatorV2 {
         
         // Skip if configured to ignore
         if (config != null && config.shouldIgnore(path)) {
+            log.debug("[V2] Skipping ignored field: {}", path);
             return;
         }
         

@@ -142,6 +142,10 @@ public class K8sDataCollectorV2 {
         // Convert spec to nested structure (preserves lists!)
         Map<String, Object> spec = extractSpec(kubernetesObject);
         model.setSpec(spec);
+        
+        // Extract data separately (for ConfigMap, Secret)
+        Map<String, Object> data = extractData(kubernetesObject);
+        model.setData(data.isEmpty() ? null : data);
 
         return model;
     }
@@ -184,7 +188,7 @@ public class K8sDataCollectorV2 {
             // Convert to JsonNode
             JsonNode node = objectMapper.valueToTree(kubernetesObject);
             
-            // Extract spec
+            // Extract spec only
             JsonNode specNode = node.get("spec");
             if (specNode != null) {
                 Object converted = convertJsonNodeToMap(specNode);
@@ -195,23 +199,58 @@ public class K8sDataCollectorV2 {
                 }
             }
             
-            // For ConfigMap/Secret, use data node
-            JsonNode dataNode = node.get("data");
-            if (dataNode != null) {
-                Map<String, Object> result = new HashMap<>();
-                Object converted = convertJsonNodeToMap(dataNode);
-                if (converted instanceof Map) {
-                    result.put("data", converted);
-                }
-                return result;
-            }
-            
         } catch (Exception e) {
             log.error("[V2] Failed to extract spec for {}: {}", 
                     kubernetesObject.getKind(), e.getMessage());
         }
 
         return new HashMap<>();
+    }
+    
+    /**
+     * Extract data separately (for ConfigMap, Secret, etc.)
+     */
+    @SuppressWarnings("unchecked")
+    private Map<String, Object> extractData(HasMetadata kubernetesObject) {
+        Map<String, Object> result = new HashMap<>();
+        
+        try {
+            // Convert to JsonNode
+            JsonNode node = objectMapper.valueToTree(kubernetesObject);
+            
+            // Extract data node (for ConfigMap, Secret)
+            JsonNode dataNode = node.get("data");
+            if (dataNode != null) {
+                Object converted = convertJsonNodeToMap(dataNode);
+                if (converted instanceof Map) {
+                    result.putAll((Map<String, Object>) converted);
+                }
+            }
+            
+            // Extract binaryData node
+            JsonNode binaryDataNode = node.get("binaryData");
+            if (binaryDataNode != null) {
+                Object converted = convertJsonNodeToMap(binaryDataNode);
+                if (converted instanceof Map) {
+                    result.put("binaryData", converted);
+                }
+            }
+            
+            // Extract stringData node (for Secret)
+            JsonNode stringDataNode = node.get("stringData");
+            if (stringDataNode != null) {
+                Object converted = convertJsonNodeToMap(stringDataNode);
+                if (converted instanceof Map) {
+                    result.put("stringData", converted);
+                }
+            }
+            
+        } catch (Exception e) {
+            log.error("[V2] Failed to extract data for {}: {}", 
+                    kubernetesObject.getKind(), e.getMessage());
+        }
+
+        return result;
     }
 
     /**

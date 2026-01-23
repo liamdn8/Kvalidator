@@ -1,3 +1,11 @@
+/home/liamdn/Kvalidator/src/test/java/com/nfv/validator/test/TestIgnoreFields.java
+/home/liamdn/Kvalidator/src/test/java/com/nfv/validator/test/TestComparisonWithData.java
+/home/liamdn/Kvalidator/src/test/java/com/nfv/validator/service/BatchValidationIgnoreFieldsTest.java
+/home/liamdn/Kvalidator/src/test/java/com/nfv/validator/test/TestYamlDataCollectorV2.java
 /home/liamdn/Kvalidator/src/test/java/com/nfv/validator/kubernetes/K8sDataCollectorTest.java
 /home/liamdn/Kvalidator/src/test/java/com/nfv/validator/service/SemanticComparisonDemo.java
+/home/liamdn/Kvalidator/src/test/java/com/nfv/validator/test/TestComparisonV2WithData.java
+/home/liamdn/Kvalidator/src/test/java/com/nfv/validator/test/TestCNFChecklistValidation.java
+/home/liamdn/Kvalidator/src/test/java/com/nfv/validator/test/TestRuntimeConfigMapCollection.java
+/home/liamdn/Kvalidator/src/test/java/com/nfv/validator/test/TestConfigMapDataParsing.java
 /home/liamdn/Kvalidator/src/test/java/com/nfv/validator/KValidatorApplicationTest.java

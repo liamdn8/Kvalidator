@@ -1,0 +1,21 @@
+apiVersion: v1
+data:
+  init.sh: |
+    #!/bin/bash
+    set -e
+    echo "Initializing application..."
+    export DB_HOST=postgres.dev.svc.cluster.local
+    export DB_PORT=5432
+    /app/start.sh
+kind: ConfigMap
+metadata:
+  annotations:
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"v1","data":{"init.sh":"#!/bin/bash\nset -e\necho \"Initializing application...\"\nexport DB_HOST=postgres.dev.svc.cluster.local\nexport DB_PORT=5432\n/app/start.sh\n"},"kind":"ConfigMap","metadata":{"annotations":{},"labels":{"app":"demo"},"name":"app-shell-config","namespace":"app-dev"}}
+  creationTimestamp: "2026-01-10T03:36:17Z"
+  labels:
+    app: demo
+  name: app-shell-config
+  namespace: app-dev
+  resourceVersion: "203111"
+  uid: 0054d11f-2ed9-45bc-a084-1b512ee102de

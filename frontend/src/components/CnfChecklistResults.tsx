@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams } from 'react-router-dom';
-import { Button, Card, Col, Row, Statistic, Space, Alert, Tag, Spin, Typography, Table } from 'antd';
+import { Button, Card, Col, Row, Statistic, Space, Alert, Tag, Spin, Typography, Table, Modal } from 'antd';
 import { DownloadOutlined, LoadingOutlined, CheckCircleOutlined, CloseCircleOutlined, BarChartOutlined } from '@ant-design/icons';
 import * as XLSX from 'xlsx';
 import { CnfValidationResultJson, ValidationJobResponse } from '../types';
@@ -26,6 +26,8 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<string>('overview');
   const resultsRef = useRef<HTMLDivElement>(null);
+  const [pollingTimeoutModal, setPollingTimeoutModal] = useState(false);
+  const pollingStartTimeRef = useRef<number>(0);
 
   const fetchResults = async () => {
     try {
@@ -79,17 +81,69 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
 
   useEffect(() => {
     let mounted = true;
+    // @ts-ignore
+    let pollInterval: NodeJS.Timeout | null = null;
     
     const loadResults = async () => {
       setLoading(true);
-      await fetchResults();
-      if (mounted) setLoading(false);
+      pollingStartTimeRef.current = Date.now();
+      
+      try {
+        const batchStatus = await validationApi.getJobStatus(jobId);
+        setBatchJob(batchStatus);
+
+        if (batchStatus.status === 'COMPLETED' || batchStatus.status === 'FAILED') {
+          // Job completed - fetch all results
+          await fetchResults();
+          if (mounted) setLoading(false);
+        } else {
+          // Job still running - start polling
+          pollInterval = setInterval(async () => {
+            if (!mounted) {
+              if (pollInterval) clearInterval(pollInterval);
+              return;
+            }
+            
+            // Check timeout
+            const elapsed = Date.now() - pollingStartTimeRef.current;
+            console.log('CNF Checklist polling elapsed time:', elapsed, 'ms');
+            if (elapsed > 1800000) { // 1800 seconds = 30 minutes
+              console.log('Timeout reached! Showing modal...');
+              if (pollInterval) clearInterval(pollInterval);
+              setPollingTimeoutModal(true);
+              setLoading(false);
+              return;
+            }
+            
+            try {
+              const updatedStatus = await validationApi.getJobStatus(jobId);
+              setBatchJob(updatedStatus);
+              
+              // Check if completed
+              if (updatedStatus.status === 'COMPLETED' || updatedStatus.status === 'FAILED') {
+                if (pollInterval) clearInterval(pollInterval);
+                await fetchResults();
+                if (mounted) setLoading(false);
+              }
+            } catch (err) {
+              console.error('Error polling job status:', err);
+            }
+          }, 5000); // Poll every 5 seconds
+        }
+      } catch (err) {
+        console.error('Error loading results:', err);
+        setError(err instanceof Error ? err.message : 'Unknown error occurred');
+        if (mounted) setLoading(false);
+      }
     };
 
     loadResults();
     
-    return () => { mounted = false; };
-  }, [jobId]);
+    return () => { 
+      mounted = false;
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, [jobId]); // Remove continuePolling from dependencies
 
   const exportToExcel = () => {
     const workbook = XLSX.utils.book_new();
@@ -105,7 +159,8 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
     
     // Collect all validation results for summary and details
     const summaryResults: any[] = [];
-    const allDetailItems: any[] = [];
+    const allMismatchItems: any[] = [];
+    const allMatchItems: any[] = [];
     
     individualJobs.forEach((jobData, jobIdKey) => {
       const result = jobData.result;
@@ -150,9 +205,9 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
               totalMissing++;
             }
             
-            // Add to detail items (only non-MATCH and non-IGNORED)
+            // Add to mismatch items (only non-MATCH and non-IGNORED)
             if (item.status !== 'MATCH' && item.status !== 'IGNORED') {
-              allDetailItems.push({
+              allMismatchItems.push({
                 namespace: nsLabel,
                 kind: item.kind || '',
                 objectName: item.objectName,
@@ -161,6 +216,20 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
                 actual: item.actualValue || '',
                 status: item.status,
                 message: item.message || ''
+              });
+            }
+            
+            // Add to match items (MATCH and IGNORED)
+            if (item.status === 'MATCH' || item.status === 'IGNORED') {
+              allMatchItems.push({
+                namespace: nsLabel,
+                kind: item.kind || '',
+                objectName: item.objectName,
+                fieldKey: item.fieldKey,
+                expected: item.baselineValue || '',
+                actual: item.actualValue || '',
+                status: item.status,
+                message: item.status === 'IGNORED' ? 'Field ignored by configuration' : 'Values match'
               });
             }
           });
@@ -172,8 +241,8 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
           .filter(counts => (counts.matched + counts.ignored) === counts.total && counts.total > 0)
           .length;
         const objectMatchRate = nsObjects > 0 ? parseFloat(((nsMatchedObjects / nsObjects) * 100).toFixed(1)) : 0;
-        // Field Match Rate: (MATCH + IGNORED) / total fields
-        const fieldMatchRate = fieldCount > 0 ? parseFloat((((matchCount + ignoredCount) / fieldCount) * 100).toFixed(1)) : 0;
+        // Field Match Rate: MATCH / (total - ignored)
+        const fieldMatchRate = (fieldCount - ignoredCount) > 0 ? parseFloat(((matchCount / (fieldCount - ignoredCount)) * 100).toFixed(1)) : 0;
         
         totalObjects += nsObjects;
         totalMatchedObjects += nsMatchedObjects;
@@ -240,6 +309,19 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
     
     const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
     
+    // Add background color to header row
+    const headerRow = 14;
+    const headerCells = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J'];
+    headerCells.forEach(col => {
+      const cellRef = `${col}${headerRow + 1}`;
+      if (!summarySheet[cellRef]) summarySheet[cellRef] = {};
+      summarySheet[cellRef].s = {
+        fill: { fgColor: { rgb: "4472C4" } },
+        font: { bold: true, color: { rgb: "FFFFFF" } },
+        alignment: { horizontal: 'center', vertical: 'center' }
+      };
+    });
+    
     // Add auto-filter to the table (header is at row 14, 0-indexed because we added one more row)
     const tableStartRow = 14;
     const tableEndRow = tableStartRow + summaryResults.length;
@@ -263,17 +345,17 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
     
     XLSX.utils.book_append_sheet(workbook, summarySheet, 'Summary');
     
-    // Sheet 2: Details - All failed items in one table
-    if (allDetailItems.length > 0) {
-      const detailData = [
-        ['VALIDATION DETAILS'],
+    // Sheet 2: Details - Mismatch (failed items only)
+    if (allMismatchItems.length > 0) {
+      const mismatchData = [
+        ['VALIDATION DETAILS - MISMATCHES ONLY'],
         [],
         ['VIM/Namespace', 'Kind', 'Object Name', 'Field Key', 'Expected Value', 'Actual Value', 'Status', 'Message']
       ];
       
-      // Add all detail items
-      allDetailItems.forEach((item) => {
-        detailData.push([
+      // Add all mismatch items
+      allMismatchItems.forEach((item) => {
+        mismatchData.push([
           item.namespace,
           item.kind,
           item.objectName,
@@ -285,17 +367,30 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
         ]);
       });
       
-      const detailSheet = XLSX.utils.aoa_to_sheet(detailData);
+      const mismatchSheet = XLSX.utils.aoa_to_sheet(mismatchData);
+      
+      // Add background color to header row
+      const mismatchHeaderRow = 2;
+      const mismatchHeaderCells = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+      mismatchHeaderCells.forEach(col => {
+        const cellRef = `${col}${mismatchHeaderRow + 1}`;
+        if (!mismatchSheet[cellRef]) mismatchSheet[cellRef] = {};
+        mismatchSheet[cellRef].s = {
+          fill: { fgColor: { rgb: "C65911" } },
+          font: { bold: true, color: { rgb: "FFFFFF" } },
+          alignment: { horizontal: 'center', vertical: 'center' }
+        };
+      });
       
       // Add auto-filter to the table (header is at row 2, 0-indexed)
-      const detailTableStartRow = 2;
-      const detailTableEndRow = detailTableStartRow + allDetailItems.length;
-      detailSheet['!autofilter'] = { 
-        ref: `A${detailTableStartRow + 1}:H${detailTableEndRow + 1}` 
+      const mismatchTableStartRow = 2;
+      const mismatchTableEndRow = mismatchTableStartRow + allMismatchItems.length;
+      mismatchSheet['!autofilter'] = { 
+        ref: `A${mismatchTableStartRow + 1}:H${mismatchTableEndRow + 1}` 
       };
       
-      // Set column widths for Detail sheet
-      detailSheet['!cols'] = [
+      // Set column widths for Mismatch sheet
+      mismatchSheet['!cols'] = [
         { wch: 25 }, // VIM/Namespace
         { wch: 20 }, // Kind
         { wch: 30 }, // Object Name
@@ -306,10 +401,69 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
         { wch: 50 }  // Message
       ];
       
-      XLSX.utils.book_append_sheet(workbook, detailSheet, 'Details');
+      XLSX.utils.book_append_sheet(workbook, mismatchSheet, 'Details - Mismatch');
+    }
+    
+    // Sheet 3: Details - Match (matched and ignored items)
+    if (allMatchItems.length > 0) {
+      const matchData = [
+        ['VALIDATION DETAILS - MATCHES ONLY'],
+        [],
+        ['VIM/Namespace', 'Kind', 'Object Name', 'Field Key', 'Expected Value', 'Actual Value', 'Status', 'Message']
+      ];
+      
+      // Add all match items
+      allMatchItems.forEach((item) => {
+        matchData.push([
+          item.namespace,
+          item.kind,
+          item.objectName,
+          item.fieldKey,
+          item.expected,
+          item.actual,
+          item.status,
+          item.message
+        ]);
+      });
+      
+      const matchSheet = XLSX.utils.aoa_to_sheet(matchData);
+      
+      // Add background color to header row
+      const matchHeaderRow = 2;
+      const matchHeaderCells = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'];
+      matchHeaderCells.forEach(col => {
+        const cellRef = `${col}${matchHeaderRow + 1}`;
+        if (!matchSheet[cellRef]) matchSheet[cellRef] = {};
+        matchSheet[cellRef].s = {
+          fill: { fgColor: { rgb: "70AD47" } },
+          font: { bold: true, color: { rgb: "FFFFFF" } },
+          alignment: { horizontal: 'center', vertical: 'center' }
+        };
+      });
+      
+      // Add auto-filter to the table
+      const matchTableStartRow = 2;
+      const matchTableEndRow = matchTableStartRow + allMatchItems.length;
+      matchSheet['!autofilter'] = { 
+        ref: `A${matchTableStartRow + 1}:H${matchTableEndRow + 1}` 
+      };
+      
+      // Set column widths for Match sheet
+      matchSheet['!cols'] = [
+        { wch: 25 }, // VIM/Namespace
+        { wch: 20 }, // Kind
+        { wch: 30 }, // Object Name
+        { wch: 40 }, // Field Key
+        { wch: 30 }, // Expected Value
+        { wch: 30 }, // Actual Value
+        { wch: 15 }, // Status
+        { wch: 50 }  // Message
+      ];
+      
+      XLSX.utils.book_append_sheet(workbook, matchSheet, 'Details - Match');
     }
 
-    XLSX.writeFile(workbook, `cnf-checklist-results-${jobId}.xlsx`);
+    XLSX.writeFile(workbook, `cnf-checklist-results-${jobId}.xlsx`, { cellStyles: true, bookSST: true });
   };
 
   const handleExportHTML = () => {
@@ -1015,9 +1169,10 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
   });
 
   return (
-    <Space direction="vertical" size="large" style={{ width: '100%' }}>
-      {/* Results Section with Fixed Right Sidebar */}
-      {individualJobs.size > 0 && (
+    <>
+      <Space direction="vertical" size="large" style={{ width: '100%' }}>
+        {/* Results Section with Fixed Right Sidebar */}
+        {individualJobs.size > 0 && (
           <div style={{ position: 'relative' }}>
             {/* Floating Navigation Sidebar - Right Side */}
             <div style={{ 
@@ -1132,7 +1287,34 @@ export const CnfChecklistResults: React.FC<CnfChecklistResultsProps> = ({ jobId:
             </Card>
           </div>
         )}
-    </Space>
+      </Space>
+    
+      {/* Polling Timeout Modal - Always render outside conditional */}
+      <Modal
+      title="Validation Timeout"
+      open={pollingTimeoutModal}
+      onOk={() => {
+        pollingStartTimeRef.current = Date.now();
+        setPollingTimeoutModal(false);
+        setLoading(true);
+        // Restart polling by re-triggering the effect
+        window.location.reload();
+      }}
+      onCancel={() => {
+        setPollingTimeoutModal(false);
+        setLoading(false);
+      }}
+      okText="Continue Waiting (5 more minutes)"
+      cancelText="Stop"
+    >
+      <Alert
+        message="The validation has been running for more than 5 minutes."
+        description="Do you want to continue waiting for another 5 minutes?"
+        type="warning"
+        showIcon
+      />
+    </Modal>
+    </>
   );
 };
 

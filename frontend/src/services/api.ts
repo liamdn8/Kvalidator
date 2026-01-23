@@ -104,12 +104,157 @@ export const validationApi = {
     return data;
   },
 
+  // Upload and parse multiple Excel files
+  uploadMultipleExcelFiles: async (files: File[]): Promise<{ success: boolean; message: string; itemCount: number; items: any[] }> => {
+    // Read all files and convert to byte arrays
+    const filePromises = files.map(file => {
+      return new Promise<number[]>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+          const arrayBuffer = e.target?.result as ArrayBuffer;
+          const uint8Array = new Uint8Array(arrayBuffer);
+          resolve(Array.from(uint8Array));
+        };
+        reader.onerror = reject;
+        reader.readAsArrayBuffer(file);
+      });
+    });
+
+    const fileContents = await Promise.all(filePromises);
+    
+    const { data } = await api.post('/cnf-checklist/upload/excel/multiple', {
+      files: fileContents
+    }, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+    return data;
+  },
+
   // Download Excel template
   downloadExcelTemplate: async (): Promise<Blob> => {
     const { data } = await api.get('/cnf-checklist/template/excel', {
       responseType: 'blob',
     });
     return data;
+  },
+
+  // YAML to CNF Checklist - Extract namespaces from YAML
+  extractNamespacesFromYaml: async (file: File): Promise<{ 
+    success: boolean; 
+    message: string; 
+    namespaces: Array<{ name: string; resourceCount: number; resourceKinds: string }> 
+  }> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('fileName', file.name);
+
+    const { data } = await api.post('/yaml-to-cnf/extract-namespaces', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    return data;
+  },
+
+  // YAML to CNF Checklist - Convert YAML to Excel
+  convertYamlToExcel: async (params: {
+    vimName: string;
+    yamlContent: string;
+    namespaces?: string[];
+    importantFields?: string[];
+  }): Promise<Blob> => {
+    const { data } = await api.post('/yaml-to-cnf/convert-to-excel', params, {
+      responseType: 'blob',
+    });
+    return data;
+  },
+
+  // YAML to CNF Batch - Extract namespaces from multiple files
+  extractNamespacesFromBatch: async (yamlFiles: Array<{
+    fileName: string;
+    yamlContent: string;
+    description?: string;
+  }>): Promise<{ 
+    success: boolean; 
+    message: string; 
+    namespaces: Array<{ name: string; resourceCount: number; resourceKinds: string }> 
+  }> => {
+    const { data } = await api.post('/yaml-to-cnf/batch/extract-namespaces', {
+      yamlFiles
+    });
+    return data;
+  },
+
+  // YAML to CNF Batch - Submit batch conversion job (creates one job per target)
+  submitBatchConversion: async (params: {
+    targets: Array<{
+      cluster: string;
+      namespace: string;
+    }>;
+    yamlFiles: Array<{
+      fileName: string;
+      yamlContent: string;
+      description?: string;
+    }>;
+    flattenMode?: string;
+    importantFields?: string[];
+    description?: string;
+  }): Promise<Array<{
+    jobId: string;
+    status: string;
+    targetNamespace: string;
+    fileCount: number;
+    namespaceCount?: number;
+    namespaces?: string[];
+    flattenMode: string;
+    submittedAt: string;
+  }>> => {
+    const { data } = await api.post('/yaml-to-cnf/batch/submit', params);
+    return data;
+  },
+
+  // Get conversion job status
+  getConversionJobStatus: async (jobId: string): Promise<{
+    jobId: string;
+    status: string;
+    targetNamespace: string;
+    fileCount: number;
+    totalItems?: number;
+    progress?: number;
+    errorMessage?: string;
+    completedAt?: string;
+  }> => {
+    const { data } = await api.get(`/yaml-to-cnf/batch/jobs/${jobId}`);
+    return data;
+  },
+
+  // Download conversion job Excel
+  downloadConversionJobExcel: async (jobId: string): Promise<Blob> => {
+    const { data } = await api.get(`/yaml-to-cnf/batch/jobs/${jobId}/download`, {
+      responseType: 'blob',
+    });
+    return data;
+  },
+
+  // Download all conversion jobs as ZIP
+  downloadAllConversionJobsZip: async (): Promise<Blob> => {
+    const { data } = await api.get('/yaml-to-cnf/batch/jobs/download-all', {
+      responseType: 'blob',
+    });
+    return data;
+  },
+
+  // Get all conversion jobs
+  getAllConversionJobs: async (): Promise<Array<any>> => {
+    const { data } = await api.get('/yaml-to-cnf/batch/jobs');
+    return data;
+  },
+
+  // Delete conversion job
+  deleteConversionJob: async (jobId: string): Promise<void> => {
+    await api.delete(`/yaml-to-cnf/batch/jobs/${jobId}`);
   },
 
   // Poll job status until completed

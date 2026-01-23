@@ -98,6 +98,12 @@ public class BatchValidationRequest {
         private boolean continueOnError = true;
         
         /**
+         * Global ignore fields applied to all requests
+         * Can be overridden per request
+         */
+        private List<String> ignoreFields;
+        
+        /**
          * Maximum number of requests to execute in parallel
          * 0 or 1 means sequential execution
          */

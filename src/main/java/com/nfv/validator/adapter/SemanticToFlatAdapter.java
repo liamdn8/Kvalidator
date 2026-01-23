@@ -68,6 +68,10 @@ public class SemanticToFlatAdapter {
         Map<String, String> flatSpec = flattenStructure("", semantic.getSpec());
         flat.setSpec(flatSpec);
         
+        // Flatten data
+        Map<String, String> flatData = flattenStructure("", semantic.getData());
+        flat.setData(flatData);
+        
         return flat;
     }
 
@@ -172,6 +176,10 @@ public class SemanticToFlatAdapter {
         // Unflatten spec
         Map<String, Object> spec = unflattenMap(flat.getSpec());
         semantic.setSpec(spec);
+        
+        // Unflatten data
+        Map<String, Object> data = unflattenMap(flat.getData());
+        semantic.setData(data);
         
         return semantic;
     }

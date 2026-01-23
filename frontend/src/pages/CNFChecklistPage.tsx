@@ -163,6 +163,25 @@ export const CNFChecklistPage = () => {
     return false; // Prevent default upload
   };
 
+  const handleMultipleExcelFilesUpload = async (fileList: File[]) => {
+    try {
+      setLoading(true);
+      const response = await validationApi.uploadMultipleExcelFiles(fileList);
+      
+      if (response.success && response.items) {
+        setTableData(response.items);
+        setInputMode('table');
+        message.success(response.message || `Loaded ${response.itemCount} unique items from ${fileList.length} Excel files`);
+      } else {
+        message.error('Failed to parse Excel files');
+      }
+    } catch (error: any) {
+      message.error(error.response?.data?.error || error.message || 'Failed to upload Excel files');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDownloadTemplate = async () => {
     try {
       setLoading(true);
@@ -538,13 +557,15 @@ ${config.ignoreFields.map(f => `  - "${f}"`).join('\n')}`;
       setJobStatus(jobResponse);
       message.success(`CNF Checklist validation started: ${jobResponse.jobId}`);
 
-      // Poll job status
+      // Poll job status with extended timeout for CNF Checklist (30 minutes)
       const completedJob = await validationApi.pollJobStatus(
         jobResponse.jobId,
         (job) => {
           console.log('Job status update:', job);
           setJobStatus(job);
-        }
+        },
+        900, // 900 attempts
+        2000 // 2 seconds interval = 30 minutes total
       );
 
       console.log('Job completed:', completedJob);
@@ -731,8 +752,25 @@ ${config.ignoreFields.map(f => `  - "${f}"`).join('\n')}`;
                   showUploadList={false}
                 >
                   <Button icon={<UploadIcon size={16} />} size="small">
-                    Upload Excel
+                    Upload Excel (Single)
                   </Button>
+                </Upload>
+                <Upload
+                  accept=".xlsx,.xls"
+                  multiple
+                  beforeUpload={(_file, fileList) => {
+                    // Collect all files and upload together
+                    const allFiles = Array.from(fileList);
+                    handleMultipleExcelFilesUpload(allFiles);
+                    return false; // Prevent default upload
+                  }}
+                  showUploadList={false}
+                >
+                  <Tooltip title="Select multiple Excel files to merge into one checklist">
+                    <Button icon={<UploadIcon size={16} />} size="small" type="primary">
+                      Upload Excel (Multiple)
+                    </Button>
+                  </Tooltip>
                 </Upload>
                 <Button 
                   icon={<Download size={16} />} 

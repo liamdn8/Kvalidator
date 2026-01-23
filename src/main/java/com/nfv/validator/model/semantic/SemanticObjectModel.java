@@ -28,6 +28,9 @@ public class SemanticObjectModel {
     // Spec as nested structure (preserves lists and nested objects)
     private Map<String, Object> spec;
     
+    // Data as nested structure (for ConfigMap, Secret, etc.)
+    private Map<String, Object> data;
+    
     /**
      * Get a nested value by path (e.g., "template.spec.containers")
      */
@@ -36,11 +39,13 @@ public class SemanticObjectModel {
         String[] parts = path.split("\\.");
         Object current = null;
         
-        // Start from metadata or spec
+        // Start from metadata, spec, or data
         if (parts[0].equals("metadata") && metadata != null) {
             current = metadata;
         } else if (parts[0].equals("spec") && spec != null) {
             current = spec;
+        } else if (parts[0].equals("data") && data != null) {
+            current = data;
         } else {
             return null;
         }
