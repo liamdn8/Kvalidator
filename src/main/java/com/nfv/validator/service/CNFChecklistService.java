@@ -433,7 +433,8 @@ public class CNFChecklistService {
         // Group items by object (kind/name)
         Map<String, List<CNFChecklistItem>> itemsByObject = new LinkedHashMap<>();
         for (CNFChecklistItem item : items) {
-            String objectKey = item.getObjectName();  // Use just name as key
+            // Use Kind/Name format to match K8sDataCollector objectId format
+            String objectKey = item.getKind() + "/" + item.getObjectName();
             itemsByObject.computeIfAbsent(objectKey, k -> new ArrayList<>()).add(item);
         }
         
@@ -457,6 +458,7 @@ public class CNFChecklistService {
                 addFieldToObject(objectModel, item.getFieldKey(), item.getManoValue());
             }
             
+            // Use Kind/Name format for object key
             namespaceModel.getObjects().put(objectKey, objectModel);
             
             log.debug("Created flattened baseline object {}/{} with {} fields", 
@@ -555,8 +557,8 @@ public class CNFChecklistService {
             
             // Process each checklist item
             for (CNFChecklistItem item : items) {
-                // Use just object name as key (matching K8sDataCollector format)
-                String objectKey = item.getObjectName();
+                // Use Kind/Name format to match K8sDataCollector objectId format
+                String objectKey = item.getKind() + "/" + item.getObjectName();
                 
                 CnfComparison.CnfChecklistResult result = CnfComparison.CnfChecklistResult.builder()
                         .kind(item.getKind())

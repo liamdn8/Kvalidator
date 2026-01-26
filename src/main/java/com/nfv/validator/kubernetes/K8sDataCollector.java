@@ -1,7 +1,9 @@
 package com.nfv.validator.kubernetes;
 
+import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import com.nfv.validator.model.FlatNamespaceModel;
 import com.nfv.validator.model.FlatObjectModel;
 import io.fabric8.kubernetes.api.model.*;
@@ -20,7 +22,16 @@ import java.util.*;
 public class K8sDataCollector {
 
     private final KubernetesClient client;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    
+    /**
+     * ObjectMapper configured to serialize ALL fields including those with default values.
+     * This ensures primitive fields (replicas, progressDeadlineSeconds, etc.) are always included
+     * in the JsonNode, even when they have default values or @JsonInclude annotations.
+     */
+    private final ObjectMapper objectMapper = new ObjectMapper()
+            .setSerializationInclusion(JsonInclude.Include.ALWAYS)
+            .configure(SerializationFeature.WRITE_NULL_MAP_VALUES, true)
+            .configure(SerializationFeature.WRITE_EMPTY_JSON_ARRAYS, true);
 
     public K8sDataCollector(KubernetesClient client) {
         this.client = client;
@@ -48,7 +59,8 @@ public class K8sDataCollector {
                     .inNamespace(namespace).list().getItems();
             for (Deployment deployment : deployments) {
                 FlatObjectModel flatObj = convertToFlatObjectModel(deployment);
-                model.addObject(deployment.getMetadata().getName(), flatObj);
+                String objectKey = deployment.getKind() + "/" + deployment.getMetadata().getName();
+                model.addObject(objectKey, flatObj);
             }
             log.info("Collected {} Deployments", deployments.size());
         } catch (Exception e) {
@@ -62,7 +74,8 @@ public class K8sDataCollector {
                     .inNamespace(namespace).list().getItems();
             for (StatefulSet statefulSet : statefulSets) {
                 FlatObjectModel flatObj = convertToFlatObjectModel(statefulSet);
-                model.addObject(statefulSet.getMetadata().getName(), flatObj);
+                String objectKey = statefulSet.getKind() + "/" + statefulSet.getMetadata().getName();
+                model.addObject(objectKey, flatObj);
             }
             log.info("Collected {} StatefulSets", statefulSets.size());
         } catch (Exception e) {
@@ -76,7 +89,8 @@ public class K8sDataCollector {
                     .inNamespace(namespace).list().getItems();
             for (DaemonSet daemonSet : daemonSets) {
                 FlatObjectModel flatObj = convertToFlatObjectModel(daemonSet);
-                model.addObject(daemonSet.getMetadata().getName(), flatObj);
+                String objectKey = daemonSet.getKind() + "/" + daemonSet.getMetadata().getName();
+                model.addObject(objectKey, flatObj);
             }
             log.info("Collected {} DaemonSets", daemonSets.size());
         } catch (Exception e) {
@@ -90,7 +104,8 @@ public class K8sDataCollector {
                     .inNamespace(namespace).list().getItems();
             for (Service service : services) {
                 FlatObjectModel flatObj = convertToFlatObjectModel(service);
-                model.addObject(service.getMetadata().getName(), flatObj);
+                String objectKey = service.getKind() + "/" + service.getMetadata().getName();
+                model.addObject(objectKey, flatObj);
             }
             log.info("Collected {} Services", services.size());
         } catch (Exception e) {
@@ -104,7 +119,8 @@ public class K8sDataCollector {
                     .inNamespace(namespace).list().getItems();
             for (ConfigMap configMap : configMaps) {
                 FlatObjectModel flatObj = convertToFlatObjectModel(configMap);
-                model.addObject(configMap.getMetadata().getName(), flatObj);
+                String objectKey = configMap.getKind() + "/" + configMap.getMetadata().getName();
+                model.addObject(objectKey, flatObj);
             }
             log.info("Collected {} ConfigMaps", configMaps.size());
         } catch (Exception e) {
@@ -118,7 +134,8 @@ public class K8sDataCollector {
                     .inNamespace(namespace).list().getItems();
             for (Secret secret : secrets) {
                 FlatObjectModel flatObj = convertToFlatObjectModel(secret);
-                model.addObject(secret.getMetadata().getName(), flatObj);
+                String objectKey = secret.getKind() + "/" + secret.getMetadata().getName();
+                model.addObject(objectKey, flatObj);
             }
             log.info("Collected {} Secrets", secrets.size());
         } catch (Exception e) {
@@ -205,24 +222,46 @@ public class K8sDataCollector {
 
     /**
      * Flatten Kubernetes object spec
+     * 
+     * ObjectMapper is configured with INCLUDE_ALWAYS to ensure ALL fields are serialized,
+     * including primitive fields with default values (replicas, progressDeadlineSeconds, etc.)
      */
     private Map<String, String> flattenSpec(HasMetadata kubernetesObject) {
         Map<String, String> flattened = new HashMap<>();
 
         try {
-            // Convert object to JsonNode
+            // Convert object to JsonNode (with INCLUDE_ALWAYS config, all fields will be present)
             JsonNode node = objectMapper.valueToTree(kubernetesObject);
             
             // Extract spec node (store without prefix - it will be added by getAllFields())
             JsonNode specNode = node.get("spec");
             if (specNode != null) {
+                log.info("✅ FLATTEN_SPEC: {}/{} - spec node EXISTS with {} fields", 
+                        kubernetesObject.getKind(), 
+                        kubernetesObject.getMetadata().getName(),
+                        specNode.size());
                 flattenJsonNode("", specNode, flattened);
+                log.info("✅ FLATTEN_SPEC: {}/{} - COLLECTED {} flattened fields: {}", 
+                        kubernetesObject.getKind(), 
+                        kubernetesObject.getMetadata().getName(),
+                        flattened.size(),
+                        new ArrayList<>(flattened.keySet()).subList(0, Math.min(10, flattened.size())));
+            } else {
+                log.error("❌ FLATTEN_SPEC: {}/{} - NO SPEC NODE FOUND!", 
+                        kubernetesObject.getKind(), 
+                        kubernetesObject.getMetadata().getName());
             }
         } catch (Exception e) {
-            log.error("Failed to flatten spec for {}: {}", 
-                    kubernetesObject.getKind(), e.getMessage());
+            log.error("❌ FLATTEN_SPEC EXCEPTION: {}/{} - {}", 
+                    kubernetesObject.getKind(), 
+                    kubernetesObject.getMetadata().getName(),
+                    e.getMessage(), e);
         }
 
+        log.info("🔍 FLATTEN_SPEC RESULT: {}/{} - returning {} fields", 
+                kubernetesObject.getKind(), 
+                kubernetesObject.getMetadata().getName(),
+                flattened.size());
         return flattened;
     }
     
@@ -340,7 +379,8 @@ public class K8sDataCollector {
                 .inNamespace(namespace).list().getItems();
         for (Deployment deployment : deployments) {
             FlatObjectModel flatObj = convertToFlatObjectModel(deployment);
-            model.addObject(deployment.getMetadata().getName(), flatObj);
+            String objectKey = deployment.getKind() + "/" + deployment.getMetadata().getName();
+            model.addObject(objectKey, flatObj);
         }
     }
 
@@ -349,7 +389,8 @@ public class K8sDataCollector {
                 .inNamespace(namespace).list().getItems();
         for (StatefulSet statefulSet : statefulSets) {
             FlatObjectModel flatObj = convertToFlatObjectModel(statefulSet);
-            model.addObject(statefulSet.getMetadata().getName(), flatObj);
+            String objectKey = statefulSet.getKind() + "/" + statefulSet.getMetadata().getName();
+            model.addObject(objectKey, flatObj);
         }
     }
 
@@ -358,7 +399,8 @@ public class K8sDataCollector {
                 .inNamespace(namespace).list().getItems();
         for (DaemonSet daemonSet : daemonSets) {
             FlatObjectModel flatObj = convertToFlatObjectModel(daemonSet);
-            model.addObject(daemonSet.getMetadata().getName(), flatObj);
+            String objectKey = daemonSet.getKind() + "/" + daemonSet.getMetadata().getName();
+            model.addObject(objectKey, flatObj);
         }
     }
 
@@ -367,7 +409,8 @@ public class K8sDataCollector {
                 .inNamespace(namespace).list().getItems();
         for (Service service : services) {
             FlatObjectModel flatObj = convertToFlatObjectModel(service);
-            model.addObject(service.getMetadata().getName(), flatObj);
+            String objectKey = service.getKind() + "/" + service.getMetadata().getName();
+            model.addObject(objectKey, flatObj);
         }
     }
 
@@ -376,7 +419,8 @@ public class K8sDataCollector {
                 .inNamespace(namespace).list().getItems();
         for (ConfigMap configMap : configMaps) {
             FlatObjectModel flatObj = convertToFlatObjectModel(configMap);
-            model.addObject(configMap.getMetadata().getName(), flatObj);
+            String objectKey = configMap.getKind() + "/" + configMap.getMetadata().getName();
+            model.addObject(objectKey, flatObj);
         }
     }
 
@@ -385,7 +429,8 @@ public class K8sDataCollector {
                 .inNamespace(namespace).list().getItems();
         for (Secret secret : secrets) {
             FlatObjectModel flatObj = convertToFlatObjectModel(secret);
-            model.addObject(secret.getMetadata().getName(), flatObj);
+            String objectKey = secret.getKind() + "/" + secret.getMetadata().getName();
+            model.addObject(objectKey, flatObj);
         }
     }
 
@@ -394,7 +439,8 @@ public class K8sDataCollector {
                 .inNamespace(namespace).list().getItems();
         for (Pod pod : pods) {
             FlatObjectModel flatObj = convertToFlatObjectModel(pod);
-            model.addObject(pod.getMetadata().getName(), flatObj);
+            String objectKey = pod.getKind() + "/" + pod.getMetadata().getName();
+            model.addObject(objectKey, flatObj);
         }
     }
 

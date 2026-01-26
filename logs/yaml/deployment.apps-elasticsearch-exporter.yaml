@@ -1,0 +1,86 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: elasticsearch-exporter
+  name: elasticsearch-exporter
+  namespace: elk
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 2
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: elasticsearch-exporter
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: elasticsearch-exporter
+    spec:
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - elasticsearch-exporter
+                topologyKey: kubernetes.io/hostname
+              weight: 100
+      containers:
+        - args:
+            - --es.uri=https://$(ES_USERNAME):$(ES_PASSWORD)@elasticsearch-master:9200
+            - --es.all
+            - --es.ssl-skip-verify
+            - --es.indices
+            - --es.indices_settings
+            - --es.indices_mappings
+            - --es.cluster_settings
+            - --es.shards
+            - --es.snapshots
+          env:
+            - name: ES_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  key: username
+                  name: es-basic-auth
+            - name: ES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: password
+                  name: es-basic-auth
+          image: harbor-registry:8018/elk/elasticsearch-exporter:v1.3.0
+          imagePullPolicy: IfNotPresent
+          name: elasticsearch-exporter
+          ports:
+            - containerPort: 9114
+              name: metrics
+              protocol: TCP
+          resources:
+            limits:
+              cpu: "2"
+              memory: 4Gi
+            requests:
+              cpu: 100m
+              memory: 100Mi
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsGroup: 65534
+            runAsNonRoot: true
+            runAsUser: 65534
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+      dnsPolicy: ClusterFirst
+      nodeSelector:
+        es-role: master
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext: {}
+      terminationGracePeriodSeconds: 30

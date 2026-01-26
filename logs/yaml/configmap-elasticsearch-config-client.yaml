@@ -1,0 +1,40 @@
+apiVersion: v1
+data:
+  elasticsearch.yml: |
+    cluster.name: es-hla
+    network.host: 0.0.0.0
+    xpack.security.enabled: true
+    xpack.security.transport.ssl.enabled: true
+    xpack.security.transport.ssl.verification_mode: certificate
+    xpack.security.transport.ssl.key: certs/tls.key
+    xpack.security.transport.ssl.certificate: certs/tls.crt
+    xpack.security.transport.ssl.certificate_authorities: [ "certs/ca.crt" ]
+    xpack.security.http.ssl.enabled: true
+    xpack.security.http.ssl.key: certs/tls.key
+    xpack.security.http.ssl.certificate: certs/tls.crt
+    xpack.security.http.ssl.certificate_authorities: [ "certs/ca.crt" ]
+    path.logs: /usr/share/elasticsearch/logs
+    node.name: ${NODE_NAME}
+    node.roles: []
+
+    # HTTP interface – giao tiếp với user và master/data
+    http.port: 9200
+    http.compression: true
+
+    # Thread tuning
+    thread_pool:
+      write:
+        size: 12
+        queue_size: 20000
+      search:
+        size: 12
+        queue_size: 5000
+
+    # Performance
+    indices.memory.index_buffer_size: 50%
+    discovery.seed_hosts: ["172.21.114.8", "172.21.114.17", "172.21.114.36", "172.21.114.45", "172.21.114.54"]
+    cluster.initial_master_nodes: ["hlavtn01compocs4log01", "hlavtn01compocs4log10", "hlavtn01compocs4log19", "hlavtn01compocs4log28", "hlavtn01compocs4log37"]
+kind: ConfigMap
+metadata:
+  name: elasticsearch-config-client
+  namespace: elk

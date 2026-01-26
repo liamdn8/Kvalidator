@@ -20,8 +20,8 @@ COPY target/quarkus-app/ ./
 # Copy validation config (can be overridden by ConfigMap in k8s)
 COPY src/main/resources/validation-config.yaml ./config/validation-config.yaml
 
-# Create directory for results with proper permissions
-RUN mkdir -p /tmp/.kvalidator/results && \
+# Create directories for results and logs with proper permissions
+RUN mkdir -p /tmp/.kvalidator/results /tmp/.kvalidator/logs && \
     chown -R kvalidator:kvalidator /app /tmp/.kvalidator
 
 # Switch to non-root user
@@ -29,6 +29,17 @@ USER kvalidator
 
 # Expose port
 EXPOSE 8080
+
+# Environment variables for logging configuration
+ENV QUARKUS_LOG_FILE_ENABLE=true \
+    QUARKUS_LOG_FILE_PATH=/tmp/.kvalidator/logs/service.log \
+    QUARKUS_LOG_FILE_LEVEL=INFO \
+    QUARKUS_LOG_FILE_FORMAT="%d{yyyy-MM-dd HH:mm:ss,SSS} %-5p [%c{3.}] (%t) %s%e%n" \
+    QUARKUS_LOG_FILE_ROTATION_MAX_FILE_SIZE=10M \
+    QUARKUS_LOG_FILE_ROTATION_MAX_BACKUP_INDEX=5 \
+    QUARKUS_LOG_FILE_ROTATION_FILE_SUFFIX=.yyyy-MM-dd \
+    QUARKUS_LOG_FILE_ROTATION_ROTATE_ON_BOOT=true \
+    QUARKUS_LOG_CONSOLE_LEVEL=INFO
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \

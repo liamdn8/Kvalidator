@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: elasticsearch-exporter
+  name: elasticsearch-exporter
+  namespace: elk
+spec:
+  externalTrafficPolicy: Cluster
+  ports:
+    - name: metrics
+      nodePort: 9114
+      port: 9114
+      protocol: TCP
+      targetPort: metrics
+  selector:
+    app: elasticsearch-exporter
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 10800
+  type: NodePort

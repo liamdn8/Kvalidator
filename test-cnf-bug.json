@@ -1,0 +1,81 @@
+{
+  "items": [
+    {
+      "uniqueId": "kind-kind-infra-test/elk/Deployment/elasticsearch-exporter/metadata.labels.app",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "elk",
+      "kind": "Deployment",
+      "objectName": "elasticsearch-exporter",
+      "fieldKey": "metadata.labels.app",
+      "manoValue": "elasticsearch-exporter"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/elk/Deployment/elasticsearch-exporter/spec.replicas",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "elk",
+      "kind": "Deployment",
+      "objectName": "elasticsearch-exporter",
+      "fieldKey": "spec.replicas",
+      "manoValue": "0"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/elk/Deployment/elasticsearch-exporter/spec.progressDeadlineSeconds",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "elk",
+      "kind": "Deployment",
+      "objectName": "elasticsearch-exporter",
+      "fieldKey": "spec.progressDeadlineSeconds",
+      "manoValue": "600"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/elk/Deployment/elasticsearch-exporter/spec.revisionHistoryLimit",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "elk",
+      "kind": "Deployment",
+      "objectName": "elasticsearch-exporter",
+      "fieldKey": "spec.revisionHistoryLimit",
+      "manoValue": "10"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/elk/Deployment/kibana/metadata.labels.app",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "elk",
+      "kind": "Deployment",
+      "objectName": "kibana",
+      "fieldKey": "metadata.labels.app",
+      "manoValue": "kibana"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/elk/Deployment/kibana/spec.replicas",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "elk",
+      "kind": "Deployment",
+      "objectName": "kibana",
+      "fieldKey": "spec.replicas",
+      "manoValue": "0"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/elk/Deployment/kibana/spec.progressDeadlineSeconds",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "elk",
+      "kind": "Deployment",
+      "objectName": "kibana",
+      "fieldKey": "spec.progressDeadlineSeconds",
+      "manoValue": "600"
+    },
+    {
+      "uniqueId": "kind-kind-infra-test/elk/Deployment/kibana/spec.revisionHistoryLimit",
+      "vimName": "kind-kind-infra-test",
+      "namespace": "elk",
+      "kind": "Deployment",
+      "objectName": "kibana",
+      "fieldKey": "spec.revisionHistoryLimit",
+      "manoValue": "10"
+    }
+  ],
+  "matchingStrategy": "value",
+  "ignoreFields": [
+    "metadata.namespace",
+    "status"
+  ]
+}

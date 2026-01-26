@@ -21,8 +21,9 @@ public class FlatNamespaceModel {
     // Cluster identifier (for multi-cluster scenarios)
     private String clusterName;
 
-    // Map of object name to FlatObjectModel
-    // Key: object name (e.g., "nginx-deployment")
+    // Map of object identifier to FlatObjectModel
+    // Key: Kind/Name format (e.g., "Deployment/nginx-deployment", "Service/nginx-service")
+    // This prevents name collision when multiple resource types have the same name
     // Value: FlatObjectModel containing flattened object data
     private Map<String, FlatObjectModel> objects;
     

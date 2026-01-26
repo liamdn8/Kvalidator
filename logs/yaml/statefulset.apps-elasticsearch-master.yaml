@@ -1,0 +1,192 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: elasticsearch-master
+  namespace: elk
+spec:
+  persistentVolumeClaimRetentionPolicy:
+    whenDeleted: Retain
+    whenScaled: Retain
+  podManagementPolicy: OrderedReady
+  replicas: 5
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      es-environment: production
+      role: master
+  serviceName: elasticsearch-master
+  template:
+    metadata:
+      labels:
+        es-environment: production
+        role: master
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: es-role
+                    operator: In
+                    values:
+                      - master
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  role: master
+              topologyKey: kubernetes.io/hostname
+      containers:
+        - env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
+            - name: NODE_ROLES
+              value: master,data,ingest
+            - name: ELASTIC_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  key: password
+                  name: es-basic-auth
+            - name: ES_JAVA_OPTS
+              value: -Xms31g -Xmx31g
+          image: harbor-registry:8018/vht/ocs/elasticsearch:8.19.9
+          imagePullPolicy: IfNotPresent
+          name: elasticsearch
+          ports:
+            - containerPort: 9200
+              name: http
+              protocol: TCP
+            - containerPort: 9300
+              name: transport
+              protocol: TCP
+          resources:
+            limits:
+              cpu: "32"
+              memory: 160Gi
+            requests:
+              cpu: "12"
+              memory: 80Gi
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+            - mountPath: /usr/share/elasticsearch/config
+              name: config-writable
+            - mountPath: /tmp
+              name: tmp
+            - mountPath: /usr/share/elasticsearch/config/elasticsearch.yml
+              name: config
+              readOnly: true
+              subPath: elasticsearch.yml
+            - mountPath: /usr/share/elasticsearch/config/log4j2.properties
+              name: log4j2
+              readOnly: true
+              subPath: log4j2.properties
+            - mountPath: /usr/share/elasticsearch/config/certs
+              name: certs
+            - mountPath: /usr/share/elasticsearch/data
+              name: data
+            - mountPath: /usr/share/elasticsearch/logs
+              name: log
+      dnsPolicy: ClusterFirst
+      hostNetwork: true
+      initContainers:
+        - command:
+            - sh
+            - -c
+            - cp -r /usr/share/elasticsearch/config/. /config-dest/
+          image: harbor-registry:8018/vht/ocs/elasticsearch:8.19.9
+          imagePullPolicy: IfNotPresent
+          name: copy-config
+          resources: {}
+          securityContext:
+            readOnlyRootFilesystem: true
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+            - mountPath: /config-dest
+              name: config-writable
+        - command:
+            - sh
+            - -c
+            - chown -R 1000:1000 /usr/share/elasticsearch/data; chown -R 1000:1000 /usr/share/elasticsearch/logs; chown -R 1000:1000 /usr/share/elasticsearch/config;
+          image: harbor-registry:8018/busybox/busybox:latest
+          imagePullPolicy: IfNotPresent
+          name: chown-data
+          resources: {}
+          securityContext:
+            readOnlyRootFilesystem: true
+            runAsUser: 0
+          terminationMessagePath: /dev/termination-log
+          terminationMessagePolicy: File
+          volumeMounts:
+            - mountPath: /usr/share/elasticsearch/data
+              name: data
+            - mountPath: /usr/share/elasticsearch/logs
+              name: log
+            - mountPath: /usr/share/elasticsearch/config
+              name: config-writable
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      securityContext:
+        fsGroup: 1000
+        runAsGroup: 1000
+        runAsUser: 1000
+      terminationGracePeriodSeconds: 30
+      volumes:
+        - emptyDir: {}
+          name: config-writable
+        - emptyDir: {}
+          name: tmp
+        - configMap:
+            defaultMode: 420
+            name: elasticsearch-log4j2
+          name: log4j2
+        - configMap:
+            defaultMode: 420
+            name: elasticsearch-config
+          name: config
+        - name: certs
+          secret:
+            defaultMode: 420
+            secretName: elastic-certs
+  updateStrategy:
+    rollingUpdate:
+      partition: 0
+    type: RollingUpdate
+  volumeClaimTemplates:
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        creationTimestamp: null
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 512Gi
+        storageClassName: elasticsearch-data
+        volumeMode: Filesystem
+      status:
+        phase: Pending
+    - apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        creationTimestamp: null
+        name: log
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 512Gi
+        storageClassName: elasticsearch-log
+        volumeMode: Filesystem
+      status:
+        phase: Pending
